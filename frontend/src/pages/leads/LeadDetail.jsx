@@ -31,7 +31,7 @@ export default function LeadDetail() {
   const [convertOpen, setConvertOpen] = useState(false);
   const [tab, setTab] = useState('Overview');
 
-  const lead = leads.find((l) => l.id === id);
+  const lead = leads.find((l) => String(l.id) === String(id));
   if (!lead) {
     return (
       <div className="page">
@@ -101,7 +101,6 @@ export default function LeadDetail() {
 
           <div className="d-flex gap-4 flex-wrap">
             <div><div className="fs-12 text-muted-c">Est. Value</div><div className="fw-7 mono fs-18">{formatINR(lead.value)}</div></div>
-            <div><div className="fs-12 text-muted-c">Expected Close</div><div className="fw-7 fs-18">{formatDate(lead.closing)}</div></div>
             <div><div className="fs-12 text-muted-c">Marketing Person</div><div className="fw-7 fs-18">{lead.assignedTo}</div></div>
           </div>
         </div>
@@ -182,8 +181,8 @@ export default function LeadDetail() {
           <div className="fw-7 fs-18 mb-3">Lead History &amp; Audit Trail</div>
           {history.length === 0 ? (
             <Timeline groups={[{ day: 'Recent', items: [
-              { icon: 'bi-plus-circle', tone: 'tone-blue', title: 'Lead created', meta: lead.owner, time: formatDate(lead.date, { short: true }) },
-              { icon: 'bi-person-check', tone: 'tone-indigo', title: `Assigned to ${lead.assignedTo}`, meta: lead.owner, time: formatDate(lead.date, { short: true }) },
+              { icon: 'bi-plus-circle', tone: 'tone-blue', title: 'Lead created', meta: lead.assignedTo || 'System', time: formatDate(lead.date, { short: true }) },
+              { icon: 'bi-person-check', tone: 'tone-indigo', title: `Assigned to ${lead.assignedTo}`, meta: 'System', time: formatDate(lead.date, { short: true }) },
             ] }]} />
           ) : (
             <Timeline groups={[{ day: 'Audit Trail', items: history.map((h) => ({

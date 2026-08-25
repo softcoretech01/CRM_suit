@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { usePortal } from '../../context/PortalContext';
 import { useAuth } from '../../context/AuthContext';
+import { useCrm } from '../../context/CrmContext';
 import { PORTAL_ORDER } from '../../config/portals';
 import { Avatar } from '../../components/common/Ui';
 
@@ -9,8 +10,11 @@ export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
   const navigate = useNavigate();
   const { portal, portals, portalId, switchPortal, signOut } = usePortal();
   const { currentUser } = useAuth();
+  const crm = useCrm();
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switchRef = useRef(null);
+
+  const myCompany = currentUser?.tenant_company_id ? crm.adminCompanies?.find(c => String(c.id) === String(currentUser.tenant_company_id)) : null;
 
   useEffect(() => {
     const h = (e) => { if (switchRef.current && !switchRef.current.contains(e.target)) setSwitcherOpen(false); };
@@ -26,7 +30,22 @@ export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
     onNavigate?.();
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      const token = sessionStorage.getItem('token');
+      if (token) {
+        await fetch('http://127.0.0.1:8000/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      }
+    } catch(e) {
+      console.error("Logout API failed", e);
+    }
+    // Clear all auth artifacts so no valid token lingers after logout.
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('ts_user');
+    localStorage.removeItem('access_token');
     signOut();
     navigate('/login');
   };
@@ -34,10 +53,14 @@ export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
       <div className="sidebar-brand">
-        <div className="brand-logo" style={{ background: portal.gradient }}>T</div>
+        {myCompany?.logo_url ? (
+          <img src={`http://127.0.0.1:8000${myCompany.logo_url}`} alt={myCompany.name} style={{ maxWidth: '140px', maxHeight: '46px', objectFit: 'contain', marginRight: '8px' }} />
+        ) : (
+          <div className="brand-logo" style={{ background: portal.gradient }}>{myCompany ? myCompany.name.charAt(0).toUpperCase() : 'T'}</div>
+        )}
         <div className="brand-text">
-          <div className="name">Techspire<span className="text-danger">.</span></div>
-          <div className="sub">{portal.short.toUpperCase()} PORTAL</div>
+          <div className="name" title={myCompany ? myCompany.name : 'Techspire'}>{myCompany ? myCompany.name : 'Techspire'}</div>
+          <div className="sub">{portal.short.toUpperCase()}</div>
         </div>
       </div>
 
@@ -46,9 +69,13 @@ export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
         {portal.nav.map((section, idx) => {
           // Filter items based on the user's role matrix for this portal
           const visibleItems = section.items.filter((it) => {
-            const roleMatrix = currentUser?.roleDef?.matrix;
-            if (!roleMatrix || !roleMatrix[portal.id]) return true; // If no matrix, allow by default
-            return roleMatrix[portal.id][it.label] === true;
+            // Prefer the permission matrix returned at login (authoritative), then the role definition.
+            const roleMatrix = (currentUser?.permissions && Object.keys(currentUser.permissions).length)
+              ? currentUser.permissions
+              : currentUser?.roleDef?.matrix;
+            // If no matrix is available yet, allow (avoids a blank sidebar during load)
+            if (!roleMatrix || Object.keys(roleMatrix).length === 0) return true;
+            return roleMatrix[portal.id]?.[it.label] === true;
           });
 
           if (visibleItems.length === 0) return null;

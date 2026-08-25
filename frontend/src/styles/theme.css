@@ -582,6 +582,18 @@ table.dt tbody tr:last-child td {
   font-size: 13px;
 }
 
+.fs-14 {
+  font-size: 14px;
+}
+
+.fs-15 {
+  font-size: 15px;
+}
+
+.fs-16 {
+  font-size: 16px;
+}
+
 .fs-18 {
   font-size: 18px;
 }
@@ -806,4 +818,22 @@ table.dt tbody tr:last-child td {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(0);
+}
+
+/* Global Font Size Increase for All Popups (Modals and Drawers) */
+.drawer-body, .mc-body {
+  font-size: 15px;
+}
+
+.drawer-body .fs-12, .mc-body .fs-12 { font-size: 14px; }
+.drawer-body .fs-13, .mc-body .fs-13 { font-size: 15px; }
+.drawer-body .fs-14, .mc-body .fs-14 { font-size: 16px; }
+.drawer-body .fs-15, .mc-body .fs-15 { font-size: 17px; }
+.drawer-body .fs-16, .mc-body .fs-16 { font-size: 18px; }
+
+/* Enlarge form inputs inside popups to match */
+.drawer-body .form-control, .mc-body .form-control,
+.drawer-body .form-select, .mc-body .form-select,
+.drawer-body textarea, .mc-body textarea {
+  font-size: 14px;
 }

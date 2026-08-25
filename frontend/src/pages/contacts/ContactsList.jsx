@@ -2,16 +2,16 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
+import DateRangeBar, { inRange } from '../../components/common/DateRangeBar';
 import { Badge, UserCell, EmptyState, Field, Section } from '../../components/common/Ui';
 import ActionIconButton from '../../components/common/ActionIconButton';
 import { Drawer } from '../../components/common/Overlay';
 import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { statusTone } from '../../utils/format';
-
 const emptyForm = {
   name: '', companyId: '', designation: '', department: '', email: '', mobile: '',
-  whatsapp: '', linkedin: '', decisionMaker: false, influencer: false, primary: false, source: 'Direct',
+  whatsapp: '', linkedin: '', decisionMaker: false, influencer: false, primary: false, source: '',
 };
 
 function RelBadges({ c }) {
@@ -28,6 +28,7 @@ function RelBadges({ c }) {
 export default function ContactsList() {
   const navigate = useNavigate();
   const crm = useCrm();
+  const { leadSources } = crm;
   const toast = useToast();
   const [params, setParams] = useSearchParams();
 
@@ -38,6 +39,7 @@ export default function ContactsList() {
   const [fCompany, setFCompany] = useState('');
   const [fDM, setFDM] = useState('');
   const [fStatus, setFStatus] = useState('');
+  const [range, setRange] = useState({ from: '', to: '' });
 
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 500);
@@ -58,57 +60,69 @@ export default function ContactsList() {
 
   const rows = useMemo(() => {
     return crm.contacts.filter((c) =>
-      (!fCompany || c.companyId === fCompany) &&
+      (!fCompany || String(c.companyId ?? c.company_id) === String(fCompany)) &&
       (!fDM || (fDM === 'yes' ? c.decisionMaker : !c.decisionMaker)) &&
-      (!fStatus || c.status === fStatus)
+      (!fStatus || c.status === fStatus) &&
+      inRange(c.created_at, range)
     );
-  }, [crm.contacts, fCompany, fDM, fStatus]);
+  }, [crm.contacts, fCompany, fDM, fStatus, range]);
 
-  const save = (keepOpen = false) => {
-    if (!form.name.trim()) { toast.error('Name required', 'Please enter the contact name.'); return; }
+  const save = async (keepOpen = false) => {
+    if (!form.name?.trim()) { toast.error('Name required', 'Please enter the full name.'); return; }
     const company = crm.companies.find((c) => c.id === form.companyId);
     
-    if (form.id) {
-      crm.updateContact(form.id, {
-        ...form,
-        company: company ? company.name : '',
-      });
-      toast.success('Contact updated', `${form.name} was saved.`);
-    } else {
-      const rec = crm.addContact({
-        ...form,
-        company: company ? company.name : '',
-      });
-      toast.success('Contact added', `${rec.name} was created.`);
-    }
-    
-    if (keepOpen) {
-      setForm({ ...emptyForm, companyId: form.companyId });
-    } else {
-      setDrawer(false);
-      setForm(emptyForm);
+    try {
+      if (form.id) {
+        await crm.updateContact(form.id, {
+          ...form,
+          company: company ? company.name : '',
+        });
+        toast.success('Contact updated', `${form.name} was saved.`);
+      } else {
+        const rec = await crm.addContact({
+          ...form,
+          company: company ? company.name : '',
+        });
+        toast.success('Contact added', `${rec.name} was created.`);
+      }
+      
+      if (keepOpen) {
+        setForm({ ...emptyForm, companyId: form.companyId });
+      } else {
+        setDrawer(false);
+        setForm(emptyForm);
+      }
+    } catch (err) {
+      toast.error('Error', 'Failed to save contact');
     }
   };
 
   const openEdit = (c) => {
-    setForm(c);
+    // Replace nulls with empty strings to avoid React uncontrolled input warnings
+    const sanitized = Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v ?? '']));
+    setForm({ ...emptyForm, ...sanitized });
     setDrawer(true);
   };
 
-  const doDelete = (c) => {
-    if (window.confirm(`Are you sure you want to delete ${c.name}?`)) {
-      crm.deleteContact(c.id);
-      toast.success('Contact Deleted', 'The contact was removed.');
+  const doDelete = async (c) => {
+    const fullName = c.name || 'Unknown Contact';
+    if (window.confirm(`Are you sure you want to delete ${fullName}?`)) {
+      try {
+        await crm.deleteContact(c.id);
+        toast.success('Contact Deleted', 'The contact was removed.');
+      } catch (err) {
+        toast.error('Error', 'Failed to delete contact');
+      }
     }
   };
 
   const columns = [
-    { key: 'id', label: 'Contact No', sortable: true, className: 'mono text-nowrap', render: (r) => r.id },
+    { key: 'sno', label: 'S.No', width: '70px', render: (_, idx) => <span className="text-secondary-c">{idx}</span> },
     {
-      key: 'name', label: 'Contact', sortable: true, accessor: (r) => r.name, className: 'text-nowrap',
-      render: (r) => <UserCell name={r.name} sub={r.designation} />,
+      key: 'name', label: 'Name', sortable: true, accessor: (r) => r.name, className: 'text-nowrap',
+      render: (r) => <span className="fw-6 text-nowrap">{r.name}</span>,
     },
-    { key: 'company', label: 'Company', sortable: true },
+    { key: 'designation', label: 'Designation', sortable: true, className: 'text-nowrap', render: (r) => <Badge tone="tone-gray">{r.designation}</Badge> },
     { key: 'email', label: 'Email', className: 'text-nowrap', render: (r) => r.email ? <a href={`mailto:${r.email}`} onClick={(e) => e.stopPropagation()}>{r.email}</a> : '—' },
     { key: 'mobile', label: 'Mobile', className: 'mono text-nowrap', render: (r) => r.mobile || '—' },
     { key: 'status', label: 'Status', sortable: true, className: 'text-nowrap', render: (r) => <Badge tone={statusTone(r.status)} dot>{r.status}</Badge> },
@@ -135,11 +149,6 @@ export default function ContactsList() {
         <option value="yes">Decision Makers</option>
         <option value="no">Non Decision Makers</option>
       </select>
-      <select className="form-select form-select-sm" style={{ width: 130 }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-        <option value="">All Status</option>
-        <option value="Active">Active</option>
-        <option value="Inactive">Inactive</option>
-      </select>
     </>
   );
 
@@ -152,6 +161,7 @@ export default function ContactsList() {
         actions={<button className="btn btn-primary" onClick={() => { setForm(emptyForm); setDrawer(true); }}><i className="bi bi-plus-lg" /> Add Contact</button>}
       />
 
+      <DateRangeBar onApply={setRange} />
       <DataTable
         columns={columns}
         rows={rows}
@@ -184,7 +194,7 @@ export default function ContactsList() {
         <Section title="Personal & Role" icon="bi-person">
           <div className="row">
             <Field label="Full Name" required col={12}>
-              <input className="form-control" value={form.name} onChange={set('name')} placeholder="e.g. Arun Prakash" />
+              <input className="form-control" value={form.name} onChange={set('name')} placeholder="Full Name" />
             </Field>
             <Field label="Company" col={12}>
               <select className="form-select" value={form.companyId} onChange={set('companyId')}>
@@ -200,13 +210,8 @@ export default function ContactsList() {
             </Field>
             <Field label="Source" col={12}>
               <select className="form-select" value={form.source} onChange={set('source')}>
-                <option value="Direct">Direct</option>
-                <option value="Website">Website</option>
-                <option value="Campaign">Campaign</option>
-                <option value="Business Card">Business Card</option>
-                <option value="Company Leaflet">Company Leaflet</option>
-                <option value="Referral">Referral</option>
-                <option value="Other">Other</option>
+                <option value="">Select source…</option>
+                {leadSources?.map((s) => <option key={s.id || s.code || s.name} value={s.name}>{s.name}</option>)}
               </select>
             </Field>
           </div>
@@ -226,23 +231,6 @@ export default function ContactsList() {
             <Field label="LinkedIn" col={12}>
               <input className="form-control" value={form.linkedin} onChange={set('linkedin')} placeholder="linkedin.com/in/username" />
             </Field>
-          </div>
-        </Section>
-
-        <Section title="Relationship" icon="bi-diagram-3">
-          <div className="d-flex flex-column gap-2">
-            <label className="d-flex align-items-center gap-2" style={{ cursor: 'pointer' }}>
-              <input type="checkbox" className="form-check-input" checked={form.decisionMaker} onChange={toggle('decisionMaker')} />
-              <span className="fs-13">Decision Maker</span>
-            </label>
-            <label className="d-flex align-items-center gap-2" style={{ cursor: 'pointer' }}>
-              <input type="checkbox" className="form-check-input" checked={form.influencer} onChange={toggle('influencer')} />
-              <span className="fs-13">Influencer</span>
-            </label>
-            <label className="d-flex align-items-center gap-2" style={{ cursor: 'pointer' }}>
-              <input type="checkbox" className="form-check-input" checked={form.primary} onChange={toggle('primary')} />
-              <span className="fs-13">Primary Contact</span>
-            </label>
           </div>
         </Section>
       </Drawer>

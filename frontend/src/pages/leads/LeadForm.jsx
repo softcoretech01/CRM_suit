@@ -7,10 +7,8 @@ import { useCrm } from '../../context/CrmContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { formatINR, formatINRFull, tempFromScore } from '../../utils/format';
-import {
-  products, industries, leadSources, campaigns, salespeople, countries, states, cities,
-  leadStatuses, priorities, nextActions
-} from '../../data/mockData';
+import { salespeople } from '../../data/mockData';
+import GeographySelect from '../../components/common/GeographySelect';
 
 const STEPS = [
   { key: 'lead', label: 'Lead Info', icon: 'bi-flag' },
@@ -21,15 +19,22 @@ const STEPS = [
   { key: 'review', label: 'Review', icon: 'bi-check2-circle' },
 ];
 
+// Ensure a dropdown can display the current value even if the master list
+// doesn't contain it (e.g. a company's industry that isn't in the Industry master).
+const ensureOption = (options, value) => {
+  const list = (options || []).filter(Boolean);
+  return value && !list.includes(value) ? [value, ...list] : list;
+};
+
 export default function LeadForm() {
   const navigate = useNavigate();
   const { id } = useParams();
   const toast = useToast();
-  const { leads, companies, contacts, addLead, updateLead } = useCrm();
+  const { leads, companies, contacts, addLead, updateLead, addCompany, addContact, leadSources, campaigns, industries, products, leadStatuses, priorities, nextActions, countries, states, cities } = useCrm();
   const { currentUser } = useAuth();
   const [searchParams] = useSearchParams();
   const prefillCompanyId = searchParams.get('companyId');
-  const editing = leads.find((l) => l.id === id);
+  const editing = leads.find((l) => String(l.id) === String(id));
 
   const [step, setStep] = useState(0);
   const [dup, setDup] = useState(false);
@@ -38,8 +43,8 @@ export default function LeadForm() {
 
   const [form, setForm] = useState(editing || {
     number: `LEAD-${String(134 + leads.length).padStart(6, '0')}`,
-    date: new Date().toISOString().substring(0, 10), owner: currentUser.name, assignedTo: currentUser.role === 'Marketing' ? currentUser.name : '', status: 'Qualified', temperature: 'Warm', score: 45,
-    company: '', industry: '', website: '', address: '', country: 'India', state: '', city: '',
+    date: new Date().toISOString().substring(0, 10), assignedTo: currentUser.role === 'Marketing' ? currentUser.name : '', status: 'Qualified', score: 45,
+    company: '', industry: '', website: '', address: '', country_id: '', state_id: '', city_id: '',
     contact: '', designation: '', contactEmail: '', contactMobile: '', whatsapp: '', linkedin: '',
     products: [], product: '', value: '', closing: '', budget: '', decisionMaker: '', competitors: '', requirement: '',
     source: '', campaign: '', utmSource: '', utmMedium: '', utmCampaign: '',
@@ -50,7 +55,7 @@ export default function LeadForm() {
   
   useEffect(() => {
     if (!editing && prefillCompanyId && !form.companyId) {
-      const match = companies.find((c) => c.id === prefillCompanyId);
+      const match = companies.find((c) => String(c.id) === String(prefillCompanyId));
       if (match) {
         setForm(f => ({
           ...f,
@@ -59,11 +64,11 @@ export default function LeadForm() {
           industry: match.industry || '',
           website: match.website || '',
           address: match.address || '',
-          city: match.city || '',
-          state: match.state || '',
-          country: match.country || 'India',
+          city_id: match.city_id || '',
+          state_id: match.state_id || '',
+          country_id: match.country_id || '',
         }));
-        const primaryContact = contacts.find((c) => c.companyId === match.id && c.primary);
+        const primaryContact = contacts.find((c) => String(c.companyId || c.company_id) === String(match.id) && c.primary);
         if (primaryContact) {
           setForm(f => ({
             ...f,
@@ -112,25 +117,49 @@ export default function LeadForm() {
   };
   const back = () => setStep((s) => Math.max(s - 1, 0));
 
-  const save = (draft) => {
-    const payload = { 
-      ...form, 
-      temperature: tempFromScore(Number(form.score) || 45), 
-      value: Number(form.value) || 0, 
-      budget: Number(form.budget) || 0, 
-      status: draft ? 'New' : form.status 
-    };
-    if (editing) { 
-      updateLead(editing.id, payload); 
-      toast.success('Lead updated', `${form.company} saved`); 
-      navigate(`/leads/${editing.id}`); 
-    }
-    else { 
-      payload.createdBy = currentUser.id;
-      payload.createdByName = currentUser.name;
-      const rec = addLead(payload); 
-      toast.success(draft ? 'Draft saved' : 'Lead created', `${form.company} added successfully`); 
-      navigate(draft ? '/leads' : `/leads/${rec.id}`); 
+  const save = async (draft) => {
+    try {
+      let finalCompanyId = form.companyId;
+      if (!finalCompanyId && form.company) {
+        const newCompany = await addCompany({ name: form.company, industry: form.industry, website: form.website, city_id: form.city_id, state_id: form.state_id, country_id: form.country_id });
+        finalCompanyId = newCompany.id;
+      }
+
+      let finalContactId = form.contactId;
+      if (form.contact && finalCompanyId) {
+        const existing = contacts.find(c => String(c.company_id || c.companyId) === String(finalCompanyId) && c.name.toLowerCase().trim() === form.contact.toLowerCase().trim());
+        if (existing) {
+          finalContactId = existing.id;
+        } else {
+          const newContact = await addContact({ name: form.contact, company_id: finalCompanyId, designation: form.designation, email: form.contactEmail, mobile: form.contactMobile, whatsapp: form.whatsapp, linkedin: form.linkedin });
+          finalContactId = newContact.id;
+        }
+      }
+
+      const payload = { 
+        ...form, 
+        companyId: finalCompanyId,
+        contactId: finalContactId,
+        value: Number(form.value) || 0, 
+        budget: Number(form.budget) || 0, 
+        status: draft ? 'New' : form.status 
+      };
+
+      if (editing) { 
+        await updateLead(editing.id, payload); 
+        toast.success('Lead updated', `${form.company} saved`); 
+        navigate(`/leads/${editing.id}`); 
+      }
+      else { 
+        payload.createdBy = currentUser.id;
+        payload.createdByName = currentUser.name;
+        const rec = await addLead(payload); 
+        toast.success(draft ? 'Draft saved' : 'Lead created', `${form.company} added successfully`); 
+        navigate(draft ? '/leads' : `/leads/${rec.id}`); 
+      }
+    } catch (err) {
+      toast.error('Error', 'Failed to save lead');
+      console.error(err);
     }
   };
 
@@ -189,24 +218,26 @@ export default function LeadForm() {
           <>
             <h5 className="mb-3"><i className="bi bi-building me-2 text-primary-c" />Company Information</h5>
             <div className="row">
-              <Field label="Company Name" required col={8} error={errors.company} hint="Select a company to auto-fill its details">
-                <select
-                  className={`form-select ${errors.company ? 'is-invalid' : ''}`}
-                  value={form.companyId || ''}
+              <Field label="Company Name" required col={8} error={errors.company} hint="Type a new name or select below">
+                <input
+                  className={`form-control ${errors.company ? 'is-invalid' : ''}`}
+                  list="lead-companies"
+                  value={form.company}
                   onChange={(e) => {
-                    const match = companies.find((c) => c.id === e.target.value);
+                    const v = e.target.value;
+                    set('company', v);
+                    const match = companies.find((c) => c.name.toLowerCase() === v.toLowerCase().trim());
                     if (match) {
-                      set('company', match.name);
                       set('companyId', match.id);
                       if (match.industry) set('industry', match.industry);
                       if (match.website) set('website', match.website);
                       if (match.address) set('address', match.address);
-                      if (match.city) set('city', match.city);
-                      if (match.state) set('state', match.state);
-                      if (match.country) set('country', match.country);
+                      if (match.city_id) set('city_id', match.city_id);
+                      if (match.state_id) set('state_id', match.state_id);
+                      if (match.country_id) set('country_id', match.country_id);
                       
                       // Auto-fill primary contact if available
-                      const primaryContact = contacts.find((c) => c.companyId === match.id && c.primary);
+                      const primaryContact = contacts.find((c) => String(c.companyId || c.company_id) === String(match.id) && c.primary);
                       if (primaryContact) {
                         set('contact', primaryContact.name);
                         set('designation', primaryContact.designation || '');
@@ -216,23 +247,47 @@ export default function LeadForm() {
                         set('linkedin', primaryContact.linkedin || '');
                       }
                     } else {
-                      set('company', '');
                       set('companyId', '');
                     }
                   }}
-                >
-                  <option value="">Select a company</option>
+                  autoComplete="off"
+                  placeholder="Enter company name"
+                />
+                <datalist id="lead-companies">
                   {companies.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.name} />
                   ))}
-                </select>
+                </datalist>
+                
+                {companies.length > 0 && !form.companyId && (
+                  <div className="mt-2 d-flex flex-wrap gap-2">
+                    <span className="fs-12 text-muted-c me-1 d-flex align-items-center">Popular:</span>
+                    {companies.slice(0, 5).map(c => (
+                      <button 
+                        key={c.id} 
+                        type="button"
+                        className="btn btn-sm btn-light border py-0 px-2 fs-12 rounded-pill"
+                        onClick={() => {
+                          set('company', c.name);
+                          set('companyId', c.id);
+                          if (c.industry) set('industry', c.industry);
+                          if (c.website) set('website', c.website);
+                          if (c.address) set('address', c.address);
+                          if (c.city_id) set('city_id', c.city_id);
+                          if (c.state_id) set('state_id', c.state_id);
+                          if (c.country_id) set('country_id', c.country_id);
+                        }}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </Field>
-              <Field label="Industry" required col={4} error={errors.industry}><select className={`form-select ${errors.industry ? 'is-invalid' : ''}`} value={form.industry} onChange={(e) => set('industry', e.target.value)}><option value="">Select</option>{industries.map((i) => <option key={i.code}>{i.name}</option>)}</select></Field>
-              <Field label="Website" col={6}><input className="form-control" value={form.website} onChange={(e) => set('website', e.target.value)} placeholder="www.example.com" /></Field>
-              <Field label="Address" col={6}><input className="form-control" value={form.address} onChange={(e) => set('address', e.target.value)} /></Field>
-              <Field label="Country" col={4}><select className="form-select" value={form.country} onChange={(e) => set('country', e.target.value)}>{countries.map((c) => <option key={c.code}>{c.name}</option>)}</select></Field>
-              <Field label="State" col={4}><select className="form-select" value={form.state} onChange={(e) => set('state', e.target.value)}><option value="">Select</option>{states.map((s) => <option key={s.code}>{s.name}</option>)}</select></Field>
-              <Field label="City" col={4}><select className="form-select" value={form.city} onChange={(e) => set('city', e.target.value)}><option value="">Select</option>{cities.map((c) => <option key={c.code}>{c.name}</option>)}</select></Field>
+              <Field label="Industry" required col={4} error={errors.industry}><select className={`form-select ${errors.industry ? 'is-invalid' : ''}`} value={form.industry || ''} onChange={(e) => set('industry', e.target.value)}><option value="">Select</option>{ensureOption(industries?.map((i) => i.name), form.industry).map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>
+              <Field label="Website" col={12}><input className="form-control" value={form.website} onChange={(e) => set('website', e.target.value)} placeholder="www.example.com" /></Field>
+              <Field label="Address" col={12}><input className="form-control" value={form.address} onChange={(e) => set('address', e.target.value)} /></Field>
+              <GeographySelect countryId={form.country_id} stateId={form.state_id} cityId={form.city_id} onChange={set} layout={4} />
             </div>
           </>
         )}
@@ -292,8 +347,7 @@ export default function LeadForm() {
               <Field label="Email" col={6} error={errors.contactEmail}><input className={`form-control ${errors.contactEmail ? 'is-invalid' : ''}`} value={form.contactEmail} onChange={(e) => set('contactEmail', e.target.value)} /></Field>
               <Field label="Mobile" col={6}><input className="form-control" value={form.contactMobile} onChange={(e) => set('contactMobile', e.target.value)} placeholder="+91 " /></Field>
               <Field label="WhatsApp" col={6}><input className="form-control" value={form.whatsapp} onChange={(e) => set('whatsapp', e.target.value)} /></Field>
-              <Field label="LinkedIn" col={6}><input className="form-control" value={form.linkedin} onChange={(e) => set('linkedin', e.target.value)} placeholder="linkedin.com/in/..." /></Field>
-              <Field label="Is Decision Maker?" col={6}><input className="form-control" value={form.decisionMaker} onChange={(e) => set('decisionMaker', e.target.value)} placeholder="Name of decision maker" /></Field>
+              <Field label="LinkedIn" col={12}><input className="form-control" value={form.linkedin} onChange={(e) => set('linkedin', e.target.value)} placeholder="linkedin.com/in/..." /></Field>
             </div>
           </>
         )}
@@ -301,21 +355,13 @@ export default function LeadForm() {
         {step === 3 && (
           <>
             <h5 className="mb-3"><i className="bi bi-briefcase me-2 text-primary-c" />Business Information</h5>
-            <div className="mb-3">
-              <label className="form-label">Interested Products <span className="req">*</span></label>
-              {errors.products && <div className="field-error mb-2"><i className="bi bi-exclamation-circle" /> {errors.products}</div>}
-              <div className="d-flex flex-wrap gap-2">
-                {products.map((p) => {
-                  const on = (form.products || []).includes(p.name);
-                  return (
-                    <button key={p.code} type="button" onClick={() => toggleProduct(p.name)}
-                      className="chip" style={{ cursor: 'pointer', border: on ? '1px solid var(--primary)' : '1px solid var(--border)', background: on ? 'var(--primary-soft)' : '#fff', color: on ? 'var(--primary)' : 'var(--text-secondary)', fontWeight: on ? 600 : 500 }}>
-                      {on && <i className="bi bi-check-lg" />} {p.name}
-                    </button>
-                  );
-                })}
+            <Field label="Products Interested In" required col={12} error={errors.products}>
+              <div className="d-flex flex-wrap gap-2 mt-1">
+                {products?.map((p) => (
+                  <button key={p.id || p.code} type="button" className={`btn btn-sm rounded-pill border ${form.products?.includes(p.name) ? 'btn-primary border-primary' : 'btn-light'}`} onClick={() => toggleProduct(p.name)}>{p.name}</button>
+                ))}
               </div>
-            </div>
+            </Field>
             <div className="row">
               <Field label="Estimated Deal Value" col={6} hint={formatINRFull(form.value)}><input type="number" className="form-control" value={form.value} onChange={(e) => set('value', e.target.value)} placeholder="2500000" /></Field>
               <Field label="Budget" col={6} hint={formatINRFull(form.budget)}><input type="number" className="form-control" value={form.budget} onChange={(e) => set('budget', e.target.value)} /></Field>
@@ -329,8 +375,8 @@ export default function LeadForm() {
           <>
             <h5 className="mb-3"><i className="bi bi-megaphone me-2 text-primary-c" />Marketing Information</h5>
             <div className="row">
-              <Field label="Lead Source" col={6}><select className="form-select" value={form.source} onChange={(e) => set('source', e.target.value)}><option value="">Select</option>{leadSources.map((s) => <option key={s.code}>{s.name}</option>)}</select></Field>
-              <Field label="Campaign" col={6}><select className="form-select" value={form.campaign} onChange={(e) => set('campaign', e.target.value)}><option value="">Select</option>{campaigns.map((c) => <option key={c.code}>{c.name}</option>)}</select></Field>
+              <Field label="Lead Source" col={6}><select className="form-select" value={form.source} onChange={(e) => set('source', e.target.value)}><option value="">Select</option>{leadSources?.map((s) => <option key={s.id || s.code} value={s.name}>{s.name}</option>)}</select></Field>
+              <Field label="Campaign" col={6}><select className="form-select" value={form.campaign} onChange={(e) => set('campaign', e.target.value)}><option value="">Select</option>{campaigns?.map((c) => <option key={c.id || c.code} value={c.name}>{c.name}</option>)}</select></Field>
               <Field label="UTM Source" col={4}><input className="form-control" value={form.utmSource} onChange={(e) => set('utmSource', e.target.value)} placeholder="google" /></Field>
               <Field label="UTM Medium" col={4}><input className="form-control" value={form.utmMedium} onChange={(e) => set('utmMedium', e.target.value)} placeholder="cpc" /></Field>
               <Field label="UTM Campaign" col={4}><input className="form-control" value={form.utmCampaign} onChange={(e) => set('utmCampaign', e.target.value)} placeholder="q3_growth" /></Field>

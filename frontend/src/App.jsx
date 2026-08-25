@@ -4,15 +4,17 @@ import AppShell from './components/layout/AppShell';
 import Login from './pages/auth/Login';
 import Dashboard from './pages/dashboard/Dashboard';
 import LeadsList from './pages/leads/LeadsList';
-import LeadDetail from './pages/leads/LeadDetail';
+import Lead360 from './pages/leads/Lead360';
 import LeadForm from './pages/leads/LeadForm';
 import CompaniesList from './pages/companies/CompaniesList';
 import Company360 from './pages/companies/Company360';
 import ContactsList from './pages/contacts/ContactsList';
 import ContactDetail from './pages/contacts/ContactDetail';
+import ProductsList from './pages/products/ProductsList';
 import OpportunitiesList from './pages/opportunities/OpportunitiesList';
 import OpportunityDetail from './pages/opportunities/OpportunityDetail';
 import Activities from './pages/activities/Activities';
+import FollowUpsList from './pages/activities/FollowUpsList';
 import SalesPipeline from './pages/pipeline/SalesPipeline';
 import MasterPage from './pages/masters/MasterPage';
 import MastersDashboard from './pages/masters/MastersDashboard';
@@ -28,11 +30,14 @@ import DocumentsList from './pages/documents/DocumentsList';
 import EmailCampaigns from './pages/marketing/EmailCampaigns';
 import EmailTemplates from './pages/marketing/EmailTemplates';
 import WhatsApp from './pages/marketing/WhatsApp';
+import SMS from './pages/marketing/SMS';
 import WhatsAppCampaigns from './pages/marketing/WhatsAppCampaigns';
 import MarketingAutomation from './pages/marketing/MarketingAutomation';
 import ApprovalCenter from './pages/workflow/ApprovalCenter';
 import AnalyticsDashboard from './pages/reports/AnalyticsDashboard';
+import LeadReports from './pages/reports/LeadReports';
 import Notifications from './pages/Notifications';
+import ProposalsList from './pages/proposals/ProposalsList';
 
 export default function App() {
   return (
@@ -45,7 +50,7 @@ export default function App() {
         <Route path="/leads" element={<LeadsList />} />
         <Route path="/leads/new" element={<LeadForm />} />
         <Route path="/leads/:id/edit" element={<LeadForm />} />
-        <Route path="/leads/:id" element={<LeadDetail />} />
+        <Route path="/leads/:id" element={<Lead360 />} />
 
         <Route path="/companies" element={<CompaniesList />} />
         <Route path="/companies/:id" element={<Company360 />} />
@@ -53,12 +58,16 @@ export default function App() {
         <Route path="/contacts" element={<ContactsList />} />
         <Route path="/contacts/:id" element={<ContactDetail />} />
 
+        <Route path="/products" element={<ProductsList />} />
+
         <Route path="/opportunities" element={<OpportunitiesList />} />
         <Route path="/opportunities/:id" element={<OpportunityDetail />} />
 
         <Route path="/activities" element={<Activities />} />
+        <Route path="/activities/followups" element={<FollowUpsList />} />
         <Route path="/activities/:view" element={<Activities />} />
         <Route path="/pipeline" element={<SalesPipeline />} />
+        <Route path="/proposals" element={<ProposalsList />} />
         
 
         {/* Volume 4: Documents, Marketing, Workflow, Reports */}
@@ -66,16 +75,19 @@ export default function App() {
         <Route path="/email-campaigns" element={<EmailCampaigns />} />
         <Route path="/email-templates" element={<EmailTemplates />} />
         <Route path="/whatsapp" element={<WhatsApp />} />
+        <Route path="/sms" element={<SMS />} />
         <Route path="/whatsapp-campaigns" element={<WhatsAppCampaigns />} />
         <Route path="/marketing-automation" element={<MarketingAutomation />} />
         <Route path="/approvals" element={<ApprovalCenter />} />
-        <Route path="/reports" element={<AnalyticsDashboard />} />
+        <Route path="/reports" element={<LeadReports />} />
+        <Route path="/reports/analytics" element={<AnalyticsDashboard />} />
         <Route path="/notifications" element={<Notifications />} />
 
         <Route path="/masters/dashboard" element={<MastersDashboard />} />
         <Route path="/masters/:type" element={<MasterPage />} />
 
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
+        <Route path="/admin/:type" element={<MasterPage />} />
         <Route path="/users" element={<UsersList />} />
         <Route path="/roles" element={<Roles />} />
         <Route path="/permissions" element={<Permissions />} />
@@ -86,4 +98,4 @@ export default function App() {
     </Routes>
   );
 }
-// trigger HMR
+// trigger HMR again

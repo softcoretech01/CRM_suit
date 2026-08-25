@@ -22,18 +22,17 @@ export default function ProposalsList() {
   }), [proposals]);
 
   const columns = [
-    { key: 'number', label: 'Proposal #', sortable: true, render: r => <span className="mono fw-6 text-primary-c">{r.number}</span> },
+    { key: 'sno', label: 'S.No', width: '70px', render: (_, idx) => <span className="text-secondary-c">{idx}</span> },
     { key: 'name', label: 'Proposal Name', sortable: true, render: r => <span className="fw-6">{r.name}</span> },
     { key: 'company', label: 'Customer', sortable: true, render: r => (
       <div className="d-flex align-items-center gap-2">
-        <Avatar name={r.company} size="sm" />
         <span className="text-truncate" style={{ maxWidth: 150 }}>{r.company}</span>
       </div>
     ) },
     { key: 'template', label: 'Template', render: r => <Badge tone="tone-gray">{r.template}</Badge> },
     { key: 'date', label: 'Date', sortable: true },
     { key: 'version', label: 'Version', render: r => <span className="badge-pill tone-blue">{r.version}</span> },
-    { key: 'createdBy', label: 'Created By', render: r => <UserCell name={r.createdBy} /> },
+    { key: 'createdBy', label: 'Created By', render: r => <UserCell name={r.createdBy} hideAvatar /> },
     { key: 'status', label: 'Status', sortable: true, render: r => {
         const tones = { Draft: 'tone-gray', Sent: 'tone-blue', Accepted: 'tone-green', Archived: 'tone-amber' };
         return <Badge tone={tones[r.status] || 'tone-gray'} dot>{r.status}</Badge>;

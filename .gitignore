@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.env
+
+# Node
+node_modules/
+dist/
+build/
+
+# IDEs / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Backend specific
+backend/uploads/
+backend/crm.db
+
+# Frontend specific
+frontend/dist/
+frontend/.vite/

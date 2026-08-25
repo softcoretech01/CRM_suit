@@ -4,7 +4,7 @@ import { useCrm } from '../../context/CrmContext';
 import { formatINR } from '../../utils/format';
 
 export default function GlobalSearch() {
-  const { leads, companies, contacts, opportunities, quotations, proposals, documents, emailCampaigns } = useCrm();
+  const { leads, companies, contacts, opportunities, proposals, documents, emailCampaigns } = useCrm();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -26,11 +26,11 @@ export default function GlobalSearch() {
 
   const results = query
     ? {
-        Leads: leads.filter((l) => match(l.company) || match(l.number) || match(l.contact)).slice(0, 4),
+        Leads: leads.filter((l) => match(l.lead_name) || match(l.company_name) || match(l.contact_name)).slice(0, 4),
         Companies: companies.filter((c) => match(c.name) || match(c.code)).slice(0, 4),
         Contacts: contacts.filter((c) => match(c.name) || match(c.email)).slice(0, 4),
-        Opportunities: opportunities.filter((o) => match(o.name) || match(o.company)).slice(0, 4),
-        Quotations: quotations.filter((q) => match(q.number) || match(q.company)).slice(0, 4),
+        Opportunities: opportunities.filter((o) => match(o.name) || match(o.company_name)).slice(0, 4),
+
         Proposals: proposals.filter((p) => match(p.name) || match(p.number)).slice(0, 4),
         Documents: documents.filter((d) => match(d.name) || match(d.number)).slice(0, 4),
         Campaigns: emailCampaigns.filter((c) => match(c.name) || match(c.code)).slice(0, 4),
@@ -66,15 +66,14 @@ export default function GlobalSearch() {
           ) : (
             <>
               <ResultGroup label="LEADS" icon="bi-lightning-charge" tone="tone-amber" items={results.Leads}
-                render={(l) => ({ title: l.company, sub: `${l.number} · ${formatINR(l.value)}`, path: `/leads/${l.id}` })} onGo={go} />
+                render={(l) => ({ title: l.lead_name, sub: `${l.company_name || l.contact_name || '—'} · ${formatINR(l.value)}`, path: `/leads/${l.id}` })} onGo={go} />
               <ResultGroup label="COMPANIES" icon="bi-building" tone="tone-blue" items={results.Companies}
                 render={(c) => ({ title: c.name, sub: `${c.industry} · ${c.city}`, path: `/companies/${c.id}` })} onGo={go} />
               <ResultGroup label="CONTACTS" icon="bi-person" tone="tone-teal" items={results.Contacts}
                 render={(c) => ({ title: c.name, sub: `${c.designation} · ${c.company}`, path: `/contacts/${c.id}` })} onGo={go} />
               <ResultGroup label="OPPORTUNITIES" icon="bi-graph-up-arrow" tone="tone-green" items={results.Opportunities}
-                render={(o) => ({ title: o.name, sub: `${o.company} · ${formatINR(o.value)}`, path: `/opportunities/${o.id}` })} onGo={go} />
-              <ResultGroup label="QUOTATIONS" icon="bi-receipt" tone="tone-blue" items={results.Quotations}
-                render={(q) => ({ title: q.number, sub: `${q.company} · ${formatINR(q.total)}`, path: `/quotations/${q.id}` })} onGo={go} />
+                render={(o) => ({ title: o.name, sub: `${o.company_name || '—'} · ${formatINR(o.value)}`, path: `/opportunities/${o.id}` })} onGo={go} />
+
               <ResultGroup label="PROPOSALS" icon="bi-file-earmark-check" tone="tone-indigo" items={results.Proposals}
                 render={(p) => ({ title: p.name, sub: p.number, path: `/proposals/${p.id}` })} onGo={go} />
               <ResultGroup label="DOCUMENTS" icon="bi-file-text" tone="tone-gray" items={results.Documents}

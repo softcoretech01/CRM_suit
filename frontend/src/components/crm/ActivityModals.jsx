@@ -93,13 +93,7 @@ export function LogActivityModal({ open, onClose, entity, entityType }) {
         <div className="mb-3">
           <label className="form-label">Activity Type <span className="text-danger">*</span></label>
           <select className="form-select" value={form.type} onChange={setF('type')}>
-            <option>Call</option>
-            <option>Email</option>
-            <option>Meeting</option>
-            <option>Visit</option>
-            <option>Demo</option>
-            <option>WhatsApp</option>
-            <option>Note</option>
+            {crm.activityTypes?.map(t => <option key={t.id || t.code || t.name} value={t.name}>{t.name}</option>)}
           </select>
         </div>
         <div className="mb-3">
@@ -186,17 +180,18 @@ export function FollowUpModal({ open, onClose, entity, entityType }) {
       return;
     }
 
-    const selectedCompany = crm.companies?.find(c => c.id === form.companyId);
-    
+    const when = `${form.date} ${(form.time || '09:00')}:00`;
     const fu = {
-      ...form,
-      status: 'Scheduled',
-      relatedEntityId: entity?.id || form.companyId || '',
-      relatedEntityType: entityType !== 'General' ? entityType : (form.companyId ? 'Company' : ''),
-      company: entity?.company || entity?.name || selectedCompany?.name || '',
-      contact: entity?.contact || form.contact || '',
+      followup_type: form.type,
+      activity: form.subject,
+      followup_date: when,
+      next_followup_date: when,
+      lead_id: entityType === 'Lead' ? (entity?.id || null) : null,
+      opportunity_id: entityType === 'Opportunity' ? (entity?.id || null) : null,
+      outcome: '',
+      status: 'Pending',
     };
-    
+
     crm.addFollowUp(fu);
     
     // update nextAction and nextActionDate on the entity if applicable
@@ -217,21 +212,13 @@ export function FollowUpModal({ open, onClose, entity, entityType }) {
           <div className="col-6">
             <label className="form-label">Type <span className="text-danger">*</span></label>
             <select className="form-select" value={form.type} onChange={setF('type')}>
-              <option>Call</option>
-              <option>Email</option>
-              <option>Meeting</option>
-              <option>Visit</option>
-              <option>Demo</option>
-              <option>WhatsApp</option>
-              <option>Task</option>
+              {crm.activityTypes?.map(t => <option key={t.id || t.code || t.name} value={t.name}>{t.name}</option>)}
             </select>
           </div>
           <div className="col-6">
             <label className="form-label">Priority</label>
             <select className="form-select" value={form.priority} onChange={setF('priority')}>
-              <option>High</option>
-              <option>Medium</option>
-              <option>Low</option>
+              {crm.priorities?.map(p => <option key={p.id || p.code || p.name} value={p.name}>{p.name}</option>)}
             </select>
           </div>
         </div>
@@ -253,14 +240,14 @@ export function FollowUpModal({ open, onClose, entity, entityType }) {
                 <label className="form-label">Contact</label>
                 <select className="form-select" value={form.contact} onChange={setF('contact')} disabled={!form.companyId}>
                   <option value="">Select contact...</option>
-                  {crm.contacts?.filter(c => c.companyId === form.companyId).map(c => (
+                  {crm.contacts?.filter(c => String(c.companyId ?? c.company_id) === String(form.companyId)).map(c => (
                     <option key={c.id} value={c.name}>{c.name}</option>
                   ))}
                 </select>
               </div>
             </div>
             {form.contact && (() => {
-              const c = crm.contacts?.find(x => x.name === form.contact && x.companyId === form.companyId);
+              const c = crm.contacts?.find(x => x.name === form.contact && String(x.companyId ?? x.company_id) === String(form.companyId));
               if (!c) return null;
               return (
                 <div className="mb-3 mt-n2">

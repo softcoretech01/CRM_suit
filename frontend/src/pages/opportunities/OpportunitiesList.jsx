@@ -1,404 +1,239 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
-import { Badge, Avatar, UserCell, EmptyState, Meter, Field } from '../../components/common/Ui';
-import { Drawer } from '../../components/common/Overlay';
+import DateRangeBar, { inRange } from '../../components/common/DateRangeBar';
+import { Badge, EmptyState, Field } from '../../components/common/Ui';
 import { StatCard } from '../../components/common/PageParts';
+import { Drawer, Modal, ConfirmDialog } from '../../components/common/Overlay';
 import ActionIconButton from '../../components/common/ActionIconButton';
-import { useCrm } from '../../context/CrmContext';
+import { Clock } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
-import { formatINR, formatDate, statusTone, priorityTone, riskTone } from '../../utils/format';
-import { products, priorities, salespeople } from '../../data/mockData';
-import { Milestone } from 'lucide-react';
+import { apiFetch } from '../../utils/api';
+import DateTimePicker from '../../components/common/DateTimePicker';
 
-const STAGES = [
-  { key: 'Qualification', label: 'Qualification', color: '#2563eb' },
-  { key: 'Requirement', label: 'Requirement', color: '#4f46e5' },
-  { key: 'Demo', label: 'Demo', color: '#0891b2' },
-  { key: 'Proposal', label: 'Proposal', color: '#8b5cf6' },
-  { key: 'Won', label: 'Won', color: '#16a34a' },
-  { key: 'Lost', label: 'Lost', color: '#dc2626' },
-];
+export const STAGE_PROB = { Qualification: 10, Requirement: 30, Demo: 50, Proposal: 70, Won: 100, Lost: 0 };
+export const STAGES = Object.keys(STAGE_PROB);
+export const stageTone = (s) => ({ Qualification: 'tone-gray', Requirement: 'tone-blue', Demo: 'tone-indigo', Proposal: 'tone-amber', Won: 'tone-green', Lost: 'tone-red' }[s] || 'tone-gray');
+const inr = (v) => (v ? `₹${Number(v).toLocaleString('en-IN')}` : '—');
+const toSql = (v) => (v ? v.replace('T', ' ') + (v.length === 16 ? ':00' : '') : null);
+const fmtDT = (v) => (v ? String(v).replace('T', ' ').slice(0, 16) : '—');
 
-const STAGE_PROB = {
-  Qualification: 10, Requirement: 30, Demo: 50, Proposal: 70, Won: 100, Lost: 0,
-};
-
-const RISKS = ['Low', 'Medium', 'High'];
-
-const emptyForm = {
-  leadId: '', name: '', company: '', companyId: '', contact: '', product: 'Manufacturing ERP', stage: 'Qualification',
-  value: '', closing: '', owner: 'Arun Kumar', priority: 'Medium', risk: 'Medium',
-  competitor: '', remarks: '',
-};
+const emptyOpp = { name: '', lead_id: '', company_id: '', value: '', stage: 'Qualification', probability: 10, expected_close_date: '', description: '' };
 
 export default function OpportunitiesList() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const crm = useCrm();
   const toast = useToast();
-
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-
+  const [rows, setRows] = useState([]);
+  const [companies, setCompanies] = useState([]);
+  const [leads, setLeads] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [fStage, setFStage] = useState('');
-  const [fPriority, setFPriority] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [range, setRange] = useState({ from: '', to: '' });
+  const [drawer, setDrawer] = useState(false);
+  const [form, setForm] = useState(emptyOpp);
+  const [confirmDel, setConfirmDel] = useState(null);
+  const [fuOpp, setFuOpp] = useState(null);
 
-  const [appliedFilters, setAppliedFilters] = useState({
-    stage: '', priority: '', from: '', to: ''
-  });
-
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { const res = await apiFetch('/crm/opportunities'); setRows(res.data || []); }
+    catch { toast.error('Error', 'Failed to load opportunities'); }
+    finally { setLoading(false); }
+  }, [toast]);
   useEffect(() => {
-    if (searchParams.get('new') === '1') {
-      const lId = searchParams.get('leadId');
-      if (lId) {
-        pickLead(lId);
-      }
-      setDrawerOpen(true);
-      searchParams.delete('new');
-      if (lId) searchParams.delete('leadId');
-      setSearchParams(searchParams, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    load();
+    apiFetch('/crm/companies').then((r) => setCompanies(r.data || [])).catch(() => {});
+    apiFetch('/crm/leads').then((r) => setLeads(r.data || [])).catch(() => {});
+  }, [load]);
 
-  const opps = crm.opportunities;
-
-  const kpis = useMemo(() => {
-    const total = opps.length;
-    const pipeline = opps.filter((o) => o.stage !== 'Lost').reduce((a, o) => a + o.value, 0);
-    const open = opps.filter((o) => !['Won', 'Lost'].includes(o.stage));
-    const weighted = open.reduce((a, o) => a + (o.value * o.probability) / 100, 0);
-    const closingThisMonth = open.filter((o) => {
-      const d = new Date(o.closing);
-      return d.getFullYear() === 2026 && d.getMonth() === 7; // August
-    }).length;
-    const won = opps.filter((o) => o.stage === 'Won').length;
-    const lost = opps.filter((o) => o.stage === 'Lost').length;
-    return { total, pipeline, weighted, closingThisMonth, won, lost };
-  }, [opps]);
-
-  const filtered = useMemo(() => opps.filter((o) => {
-    if (appliedFilters.stage && o.stage !== appliedFilters.stage) return false;
-    if (appliedFilters.priority && o.priority !== appliedFilters.priority) return false;
-    if (appliedFilters.from && o.closing < appliedFilters.from) return false;
-    if (appliedFilters.to && o.closing > appliedFilters.to) return false;
-    return true;
-  }), [opps, appliedFilters]);
-
-  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  // Leads eligible to convert: qualified/open leads NOT already linked to an opportunity
-  const eligibleLeads = useMemo(() => {
-    const linked = new Set(crm.opportunities.map((o) => o.leadId).filter(Boolean));
-    return crm.leads.filter(
-      (l) => !linked.has(l.id) && l.status !== 'Lost'
-    );
-  }, [crm.leads, crm.opportunities]);
-
-  // Selecting a lead auto-fills the opportunity from the lead's company/contact/product/value
-  const pickLead = (leadId) => {
-    if (!leadId) { setForm((f) => ({ ...f, leadId: '' })); return; }
-    const l = crm.leads.find((x) => x.id === leadId);
-    if (!l) return;
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const onStage = (e) => { const s = e.target.value; setForm((f) => ({ ...f, stage: s, probability: STAGE_PROB[s] ?? f.probability })); };
+  // Selecting a lead auto-fills the opportunity from that lead
+  const onLead = (e) => {
+    const lid = e.target.value;
+    const l = leads.find((x) => String(x.id) === String(lid));
     setForm((f) => ({
-      ...f,
-      leadId: l.id,
-      name: l.product ? `${l.product} — ${l.company}` : f.name,
-      company: l.company,
-      companyId: l.companyId || '',
-      contact: l.contact || '',
-      product: l.product || f.product,
-      value: l.value != null ? String(l.value) : f.value,
-      closing: l.closing || f.closing,
-      owner: l.assignedTo || l.owner || f.owner,
-      priority: l.priority || f.priority,
-      competitor: l.competitors || f.competitor,
-      remarks: l.requirement || f.remarks,
+      ...f, lead_id: lid,
+      name: f.name || (l ? l.lead_name : ''),
+      company_id: l?.company_id ? String(l.company_id) : f.company_id,
+      value: (f.value === '' || f.value == null) && l?.value ? l.value : f.value,
     }));
   };
 
-  const submit = () => {
-    if (!form.name.trim() || !form.company.trim()) {
-      toast.error('Missing details', 'Opportunity name and company are required.');
-      return;
-    }
-    if (form.id) {
-      crm.updateOpportunity(form.id, {
-        ...form,
-        value: Number(form.value) || 0,
-        probability: STAGE_PROB[form.stage] ?? 10,
-      });
-      toast.success('Opportunity updated', `${form.name} has been updated.`);
-    } else {
-      const created = crm.addOpportunity({
-        ...form,
-        value: Number(form.value) || 0,
-        probability: STAGE_PROB[form.stage] ?? 10,
-      });
-      if (form.leadId) {
-        crm.updateLead(form.leadId, { status: 'Converted', converted: true, opportunityId: created.id });
-        toast.success('Lead converted', `Linked to ${created.number} — lead marked Converted.`);
-      } else {
-        toast.success('Opportunity created', `${form.name} added to the pipeline.`);
-      }
-    }
-    setForm(emptyForm);
-    setDrawerOpen(false);
-  };
-
+  const openNew = () => { setForm(emptyOpp); setDrawer(true); };
   const openEdit = (o) => {
     setForm({
-      id: o.id,
-      name: o.name || '',
-      company: o.company || '',
-      companyId: o.companyId || '',
-      contact: o.contact || '',
-      product: o.product || 'Manufacturing ERP',
-      stage: o.stage || 'Qualification',
-      value: o.value != null ? String(o.value) : '',
-      closing: o.closing || '',
-      owner: o.owner || 'Arun Kumar',
-      priority: o.priority || 'Medium',
-      risk: o.risk || 'Medium',
-      competitor: o.competitor || '',
-      remarks: o.remarks || '',
+      id: o.id, name: o.name || '', company_id: o.company_id || '', value: o.value || '',
+      stage: o.stage || 'Qualification', probability: o.probability ?? STAGE_PROB[o.stage] ?? 10,
+      expected_close_date: o.expected_close_date ? String(o.expected_close_date).slice(0, 10) : '', description: o.description || '',
     });
-    setDrawerOpen(true);
+    setDrawer(true);
   };
 
-  const handleMove = (item, newStage) => {
-    crm.updateOpportunity(item.id, { stage: newStage, probability: STAGE_PROB[newStage] ?? item.probability });
-    toast.success('Stage updated', `${item.name} moved to ${newStage}.`);
+  const save = async () => {
+    if (!form.name.trim()) { toast.error('Name required', 'Enter an opportunity name.'); return; }
+    const body = { ...form, value: form.value === '' ? null : Number(form.value), probability: Number(form.probability), expected_close_date: form.expected_close_date || null };
+    try {
+      if (form.id) { await apiFetch(`/crm/opportunities/${form.id}`, { method: 'PUT', body }); toast.success('Opportunity updated', form.name); }
+      else { await apiFetch('/crm/opportunities', { method: 'POST', body }); toast.success('Opportunity created', form.name); }
+      setDrawer(false); load();
+    } catch { toast.error('Error', 'Failed to save opportunity'); }
   };
 
-  const doDelete = (item) => {
-    if (window.confirm(`Are you sure you want to delete "${item.name}"?`)) {
-      crm.deleteOpportunity(item.id);
-      toast.success('Opportunity Deleted', 'The opportunity was removed.');
-    }
+  const doDelete = async () => {
+    try { await apiFetch(`/crm/opportunities/${confirmDel.id}`, { method: 'DELETE' }); toast.success('Deleted', confirmDel.name); load(); }
+    catch { toast.error('Error', 'Failed to delete'); }
+    finally { setConfirmDel(null); }
   };
+
+  const filtered = useMemo(() => rows.filter((o) => (!fStage || o.stage === fStage) && inRange(o.created_at, range)), [rows, fStage, range]);
 
   const columns = [
-    { key: 'number', label: 'Opp No', sortable: true, className: 'mono text-nowrap', render: (r) => r.number },
-    {
-      key: 'name', label: 'Opportunity', sortable: true,
-      render: (r) => (
-        <div>
-          <div className="fw-6 text-nowrap">{r.name}</div>
-        </div>
-      ),
-    },
-    { key: 'company', label: 'Company', className: 'text-nowrap', render: (r) => r.company },
-    { key: 'stage', label: 'Stage', className: 'text-nowrap', render: (r) => <Badge tone={statusTone(r.stage)}>{r.stage}</Badge> },
-    {
-      key: 'probability', label: 'Probability', width: '140px',
-      render: (r) => (
-        <div style={{ minWidth: 96 }}>
-          <div className="d-flex justify-content-between fs-12 mb-1"><span>{r.probability}%</span></div>
-          <Meter value={r.probability} tone="var(--primary)" />
-        </div>
-      ),
-    },
-    {
-      key: 'value', label: 'Value', sortable: true, accessor: (r) => r.value, className: 'mono text-nowrap',
-      render: (r) => <span className="mono fw-6 text-nowrap">{formatINR(r.value)}</span>,
-    },
-    { key: 'owner', label: 'Marketing Person', className: 'text-nowrap', render: (r) => <UserCell name={r.owner} /> },
-    {
-      key: 'actions', label: 'Action', width: '130px',
-      render: (r) => (
-        <div className="d-flex align-items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <ActionIconButton type="view" tooltip="View Stages" icon={Milestone} onClick={() => navigate(`/opportunities/${r.id}`)} />
-          <ActionIconButton type="delete" onClick={() => doDelete(r)} />
-        </div>
-      ),
-    },
+    { key: 'sno', label: 'S.No', width: '64px', render: (_, i) => <span className="text-secondary-c">{i}</span> },
+    { key: 'name', label: 'Opportunity', sortable: true, render: (r) => (
+      <div><div className="fw-6">{r.name}</div><div className="fs-12 text-muted-c">{r.company_name || r.lead_name || ''}</div></div>) },
+    { key: 'stage', label: 'Stage', sortable: true, render: (r) => <Badge tone={stageTone(r.stage)} dot>{r.stage || '—'}</Badge> },
+    { key: 'probability', label: 'Prob.', render: (r) => (r.probability != null ? `${r.probability}%` : '—') },
+    { key: 'value', label: 'Value', sortable: true, accessor: (r) => Number(r.value) || 0, render: (r) => <span className="mono">{inr(r.value)}</span> },
+    { key: 'expected_close_date', label: 'Expected Close', render: (r) => (r.expected_close_date ? String(r.expected_close_date).slice(0, 10) : '—') },
+    { key: 'status', label: 'Status', render: (r) => <Badge tone={r.status === 'WON' ? 'tone-green' : r.status === 'LOST' ? 'tone-red' : 'tone-blue'}>{r.status || 'ACTIVE'}</Badge> },
+    { key: 'actions', label: 'Action', width: '150px', render: (r) => (
+      <div className="d-flex align-items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <ActionIconButton type="view" tooltip="View 360" onClick={() => navigate(`/opportunities/${r.id}`)} />
+        <span className="position-relative d-inline-flex">
+          <ActionIconButton icon={Clock} tooltip={r.followup_count ? `${r.followup_count} pending follow-up${r.followup_count > 1 ? 's' : ''}` : 'Follow-ups'} onClick={() => setFuOpp(r)} />
+          {r.followup_count > 0 && (
+            <span style={{ position: 'absolute', top: -2, right: -2, minWidth: 15, height: 15, lineHeight: '15px', fontSize: 9, fontWeight: 700, textAlign: 'center', color: '#fff', background: '#ef4444', borderRadius: 999, padding: '0 3px', boxShadow: '0 0 0 2px #fff', pointerEvents: 'none' }}>{r.followup_count}</span>
+          )}
+        </span>
+        <ActionIconButton type="edit" tooltip="Edit" onClick={() => openEdit(r)} />
+        <ActionIconButton type="delete" tooltip="Delete" onClick={() => setConfirmDel(r)} />
+      </div>) },
   ];
 
-  const handleSearch = () => {
-    setAppliedFilters({ stage: fStage, priority: fPriority, from: fromDate, to: toDate });
-  };
-
-  const handleClear = () => {
-    setFStage(''); setFPriority(''); setFromDate(''); setToDate('');
-    setAppliedFilters({ stage: '', priority: '', from: '', to: '' });
-  };
-
-  const filterControls = (
-    <div className="d-flex flex-wrap gap-2 align-items-center">
-      <select className="form-select form-select-sm" style={{ width: 130 }} value={fStage} onChange={(e) => setFStage(e.target.value)}>
-        <option value="">All Stages</option>
-        {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-      </select>
-      <select className="form-select form-select-sm" style={{ width: 130 }} value={fPriority} onChange={(e) => setFPriority(e.target.value)}>
-        <option value="">All Priorities</option>
-        {priorities.map((p) => <option key={p.code} value={p.name}>{p.name}</option>)}
-      </select>
-    </div>
+  const filters = (
+    <select className="form-select form-select-sm" style={{ width: 160 }} value={fStage} onChange={(e) => setFStage(e.target.value)}>
+      <option value="">All Stages</option>{STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
+    </select>
   );
-
-  const renderCard = (item) => {
-    const stage = STAGES.find((s) => s.key === item.stage);
-    return (
-      <div>
-        <div className="d-flex align-items-start justify-content-between gap-2">
-          <div style={{ minWidth: 0 }}>
-            <div className="fw-6 text-truncate">{item.name}</div>
-            <div className="fs-12 text-muted-c text-truncate">{item.company}</div>
-          </div>
-          <button className="icon-btn" title="Open" style={{ flexShrink: 0 }}
-            onClick={(e) => { e.stopPropagation(); navigate(`/opportunities/${item.id}`); }}>
-            <i className="bi bi-box-arrow-up-right" style={{ fontSize: 13 }} />
-          </button>
-        </div>
-        <div className="d-flex align-items-center justify-content-between mt-2">
-          <span className="mono fw-7">{formatINR(item.value)}</span>
-          <Badge tone="tone-blue">{item.probability}%</Badge>
-        </div>
-        <div className="fs-12 text-muted-c mt-2">Expected: {formatDate(item.closing, { short: true })}</div>
-        <div className="d-flex align-items-center justify-content-between mt-2">
-          <Badge tone={riskTone(item.risk)}>{item.risk || '—'} risk</Badge>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="page">
-      <PageHeader
-        title="Opportunities"
-        subtitle="Track deals through every stage of the sales pipeline"
-        icon="bi-graph-up-arrow"
-        actions={
-          <button className="btn btn-primary" onClick={() => { setForm(emptyForm); setDrawerOpen(true); }}>
-            <i className="bi bi-plus-lg" /> New Opportunity
-          </button>
-        }
-      />
+      <PageHeader title="Opportunities" subtitle="Track deals through your sales pipeline" icon="bi-graph-up-arrow"
+        actions={<button className="btn btn-primary" onClick={openNew}><i className="bi bi-plus-lg" /> New Opportunity</button>} />
 
 
-
-      <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-        <div className="d-flex flex-wrap align-items-center gap-3 bg-white p-2 border rounded shadow-sm">
-          <div className="d-flex align-items-center gap-2">
-            <span className="fs-13 fw-6 text-secondary-c">From</span>
-            <input type="date" className="form-control form-control-sm" value={fromDate} onChange={e => setFromDate(e.target.value)} />
-          </div>
-          <div className="d-flex align-items-center gap-2">
-            <span className="fs-13 fw-6 text-secondary-c">To</span>
-            <input type="date" className="form-control form-control-sm" value={toDate} onChange={e => setToDate(e.target.value)} />
-          </div>
-          <div className="d-flex align-items-center gap-2 border-start ps-3">
-            <button className="btn btn-primary btn-sm d-flex align-items-center gap-2" onClick={handleSearch}>
-              <i className="bi bi-search" /> Search
-            </button>
-            <button className="btn btn-light btn-sm d-flex align-items-center gap-2" onClick={handleClear}>
-              <i className="bi bi-x-circle" /> Cancel
-            </button>
-          </div>
-        </div>
-        <div className="fs-13 text-muted-c">{filtered.length} of {opps.length} opps</div>
-      </div>
-
-      <DataTable
-        columns={columns}
-        rows={filtered}
-        keyField="id"
+      <DateRangeBar onApply={setRange} />
+      <DataTable columns={columns} rows={filtered} keyField="id" loading={loading} filters={filters}
         onRowClick={(r) => navigate(`/opportunities/${r.id}`)}
-        searchPlaceholder="Search opportunities..."
-        searchKeys={['name', 'number', 'company', 'contact', 'product', 'owner']}
-        filters={filterControls}
-        empty={<EmptyState icon="bi-graph-up-arrow" title="No opportunities found"
-          message="Adjust your filters or create a new opportunity."
-          action={<button className="btn btn-primary" onClick={() => { setForm(emptyForm); setDrawerOpen(true); }}><i className="bi bi-plus-lg" /> New Opportunity</button>} />}
-      />
+        searchPlaceholder="Search opportunity, company..." searchKeys={['name', 'company_name', 'lead_name', 'stage']}
+        empty={<EmptyState icon="bi-graph-up-arrow" title="No opportunities yet" message="Create one, or convert a lead from the Leads screen." action={<button className="btn btn-primary" onClick={openNew}><i className="bi bi-plus-lg" /> New Opportunity</button>} />} />
 
-      <Drawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        title={form.id ? "Edit Opportunity" : "New Opportunity"}
-        subtitle={form.id ? "Update deal details" : "Add a deal to your pipeline"}
-        icon="bi-graph-up-arrow"
-        width={560}
-        footer={
-          <>
-            <button className="btn btn-light" onClick={() => setDrawerOpen(false)}>Cancel</button>
-            <button className="btn btn-primary" onClick={submit}><i className="bi bi-check-lg" /> {form.id ? "Save Changes" : "Create Opportunity"}</button>
-          </>
-        }
-      >
-        <div className="row">
+      <Drawer open={drawer} onClose={() => setDrawer(false)} title={form.id ? 'Edit Opportunity' : 'New Opportunity'} icon="bi-graph-up-arrow" width={520}
+        footer={<><button className="btn btn-light" onClick={() => setDrawer(false)}>Cancel</button><button className="btn btn-primary" onClick={save}><i className="bi bi-check-lg" /> Save</button></>}>
+        <div className="row g-3">
           {!form.id && (
-            <Field label="Convert from Lead" col={12} hint="Pick a qualified lead to auto-fill this opportunity — the lead is then marked Converted">
-              <select className="form-select" value={form.leadId || ''} onChange={(e) => pickLead(e.target.value)}>
-                <option value="">— Start blank (no lead) —</option>
-                {eligibleLeads.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.number} · {l.company} · {l.product} · {formatINR(l.value)}
-                  </option>
-                ))}
+            <Field label="From Lead (auto-fills details)" col={12}>
+              <select className="form-select" value={form.lead_id} onChange={onLead}>
+                <option value="">— none —</option>
+                {leads.map((l) => <option key={l.id} value={l.id}>{l.lead_name}{l.company_name ? ` (${l.company_name})` : ''}</option>)}
               </select>
             </Field>
           )}
-          {!form.id && form.leadId && (
-            <div className="col-12 mb-3">
-              <div className="chip" style={{ background: 'var(--success-soft)', color: 'var(--success)' }}>
-                <i className="bi bi-link-45deg" /> Auto-filled from lead {form.leadId}
-              </div>
-            </div>
-          )}
-          <Field label="Opportunity Name" required col={12}>
-            <input className="form-control" value={form.name} onChange={(e) => setField('name', e.target.value)} placeholder="e.g. Manufacturing ERP Implementation" />
-          </Field>
-          <Field label="Company" required col={6}>
-            <input className="form-control" value={form.company} onChange={(e) => setField('company', e.target.value)} placeholder="Company name" />
-          </Field>
-          <Field label="Contact" col={6}>
-            <input className="form-control" value={form.contact} onChange={(e) => setField('contact', e.target.value)} placeholder="Contact person" />
-          </Field>
-          <Field label="Product" col={6}>
-            <select className="form-select" value={form.product} onChange={(e) => setField('product', e.target.value)}>
-              {products.map((p) => <option key={p.code} value={p.name}>{p.name}</option>)}
-            </select>
-          </Field>
-          <Field label="Stage" col={6} hint={`Probability auto-set to ${STAGE_PROB[form.stage]}%`}>
-            <select className="form-select" value={form.stage} onChange={(e) => setField('stage', e.target.value)}>
-              {STAGES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
-          </Field>
-          <Field label="Estimated Value (₹)" col={6}>
-            <input type="number" className="form-control" value={form.value} onChange={(e) => setField('value', e.target.value)} placeholder="2500000" />
-          </Field>
-          <Field label="Expected Closing" col={6}>
-            <input type="date" className="form-control" value={form.closing} onChange={(e) => setField('closing', e.target.value)} />
-          </Field>
-          <Field label="Marketing Person" col={6}>
-            <select className="form-select" value={form.owner} onChange={(e) => setField('owner', e.target.value)}>
-              {salespeople.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </Field>
-          <Field label="Priority" col={6}>
-            <select className="form-select" value={form.priority} onChange={(e) => setField('priority', e.target.value)}>
-              {priorities.map((p) => <option key={p.code} value={p.name}>{p.name}</option>)}
-            </select>
-          </Field>
-          <Field label="Risk" col={6}>
-            <select className="form-select" value={form.risk} onChange={(e) => setField('risk', e.target.value)}>
-              {RISKS.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </Field>
-          <Field label="Competitor" col={6}>
-            <input className="form-control" value={form.competitor} onChange={(e) => setField('competitor', e.target.value)} placeholder="Competing vendor" />
-          </Field>
-          <Field label="Remarks" col={12}>
-            <textarea className="form-control" rows={3} value={form.remarks} onChange={(e) => setField('remarks', e.target.value)} placeholder="Notes about this opportunity" />
-          </Field>
+          <Field label="Opportunity Name" required col={12}><input className="form-control" value={form.name} onChange={set('name')} /></Field>
+          <Field label="Company" col={12}><select className="form-select" value={form.company_id} onChange={set('company_id')}><option value="">— none —</option>{companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+          <Field label="Stage" col={6}><select className="form-select" value={form.stage} onChange={onStage}>{STAGES.map((s) => <option key={s} value={s}>{s}</option>)}</select></Field>
+          <Field label="Probability (%)" col={6}><input type="number" className="form-control" value={form.probability} onChange={set('probability')} /></Field>
+          <Field label="Value (₹)" col={6}><input type="number" className="form-control" value={form.value} onChange={set('value')} /></Field>
+          <Field label="Expected Close" col={6}><input type="date" className="form-control" value={form.expected_close_date} onChange={set('expected_close_date')} /></Field>
+          <Field label="Description" col={12}><textarea className="form-control" rows={2} value={form.description} onChange={set('description')} /></Field>
         </div>
       </Drawer>
+
+      {fuOpp && <OppFollowUpModal opp={fuOpp} onClose={() => { setFuOpp(null); load(); }} />}
+      <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={doDelete} title="Delete opportunity?" message={`Delete "${confirmDel?.name}"?`} confirmLabel="Delete" />
     </div>
+  );
+}
+
+// ---------- Follow-up modal for an opportunity ----------
+function OppFollowUpModal({ opp, onClose }) {
+  const toast = useToast();
+  const [followups, setFollowups] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [f, setF] = useState({ followup_date: '', followup_type: 'Call', activity: '', next_followup_date: '', outcome: '' });
+  const [completingId, setCompletingId] = useState(null);
+  const [cOutcome, setCOutcome] = useState('');
+  const [cSubject, setCSubject] = useState('');
+  const openComplete = (it) => { setCompletingId(it.id); setCOutcome(''); setCSubject(it.activity || it.followup_type || ''); };
+  const load = useCallback(() => {
+    apiFetch(`/crm/opportunities/${opp.id}/followups`).then((r) => setFollowups((r.data || []).filter((x) => x.status !== 'Done'))).catch(() => {});
+    apiFetch(`/crm/opportunities/${opp.id}/activities`).then((r) => setActivities(r.data || [])).catch(() => {});
+  }, [opp.id]);
+  useEffect(() => { load(); }, [load]);
+  const save = async () => {
+    if (!f.followup_date) { toast.error('Date required', 'Pick the date/time of this touch.'); return; }
+    try {
+      await apiFetch(`/crm/opportunities/${opp.id}/log-touch`, { method: 'POST', body: { ...f, followup_date: toSql(f.followup_date), next_followup_date: toSql(f.next_followup_date) } });
+      toast.success('Saved', f.next_followup_date ? 'Logged to Activities + next follow-up scheduled' : 'Logged to Activities');
+      setF({ followup_date: '', followup_type: 'Call', activity: '', next_followup_date: '', outcome: '' }); load();
+    } catch { toast.error('Error', 'Failed to save'); }
+  };
+  const scheduleOnly = async () => {
+    if (!f.next_followup_date) { toast.error('Date required', 'Pick the next follow-up date/time.'); return; }
+    try {
+      await apiFetch('/crm/followups', { method: 'POST', body: { opportunity_id: opp.id, followup_date: toSql(f.next_followup_date), next_followup_date: toSql(f.next_followup_date), followup_type: f.followup_type, activity: f.activity, status: 'Pending' } });
+      toast.success('Follow-up scheduled', 'Added to the Follow-ups screen'); setF({ ...f, next_followup_date: '' }); load();
+    } catch { toast.error('Error', 'Failed to schedule follow-up'); }
+  };
+  const completeFu = async (fid) => {
+    try { await apiFetch(`/crm/followups/${fid}/done`, { method: 'POST', body: { outcome: cOutcome, subject: cSubject } }); toast.success('Follow-up completed', 'Logged to Activities'); setCompletingId(null); setCOutcome(''); setCSubject(''); load(); }
+    catch { toast.error('Error', 'Failed to complete'); }
+  };
+  return (
+    <Modal open onClose={onClose} title={`Follow-up — ${opp.name}`} icon="bi-clock-history" width={660}>
+      <div className="row g-2 mb-3">
+        <div className="col-12 fs-12 text-muted-c mb-1"><b>Save Touch</b> logs to <b>Activities</b> (as an Opportunity activity). <b>Schedule Follow-up</b> just plans a future one.</div>
+        <Field label="Date/Time (this touch)" col={6}><DateTimePicker value={f.followup_date} onChange={(v) => setF({ ...f, followup_date: v })} /></Field>
+        <Field label="Type" col={6}><select className="form-select" value={f.followup_type} onChange={(e) => setF({ ...f, followup_type: e.target.value })}>{['Call', 'Email', 'Meeting', 'Visit', 'WhatsApp'].map((t) => <option key={t}>{t}</option>)}</select></Field>
+        <Field label="Subject" col={12}><input className="form-control" value={f.activity} onChange={(e) => setF({ ...f, activity: e.target.value })} placeholder="Subject — what was done" /></Field>
+        <Field label="Outcome" col={6}><input className="form-control" value={f.outcome} onChange={(e) => setF({ ...f, outcome: e.target.value })} /></Field>
+        <Field label="Next Follow-up Date/Time" col={6} hint="Used by both buttons"><DateTimePicker value={f.next_followup_date} onChange={(v) => setF({ ...f, next_followup_date: v })} /></Field>
+        <div className="col-12 d-flex justify-content-end gap-2">
+          <button className="btn btn-light btn-sm" onClick={scheduleOnly}><i className="bi bi-calendar-plus" /> Schedule Follow-up</button>
+          <button className="btn btn-primary btn-sm" onClick={save}><i className="bi bi-check-lg" /> Save Touch</button>
+        </div>
+      </div>
+
+      <div className="fs-13 fw-7 text-muted-c mb-1">Upcoming follow-ups ({followups.length})</div>
+      {followups.length === 0 ? <div className="text-muted-c fs-12 mb-2">None scheduled.</div> :
+        followups.map((it) => (
+          <div key={it.id} className="py-1 border-bottom">
+            <div className="d-flex justify-content-between align-items-center">
+              <span className="fs-13"><i className="bi bi-clock text-primary-c me-1" />{fmtDT(it.next_followup_date || it.followup_date)} · {it.followup_type}</span>
+              <div className="d-flex align-items-center gap-2">
+                <Badge tone="tone-amber">Pending</Badge>
+                <button className="btn btn-sm btn-success py-0 px-2" title="Complete — enter outcome" onClick={() => openComplete(it)}><i className="bi bi-check-lg" /></button>
+              </div>
+            </div>
+            {completingId === it.id && (
+              <div className="mt-1"><input className="form-control form-control-sm mb-1" placeholder="Subject" value={cSubject} onChange={(e) => setCSubject(e.target.value)} /><div className="d-flex gap-2"><input className="form-control form-control-sm" placeholder="Outcome of this follow-up" value={cOutcome} onChange={(e) => setCOutcome(e.target.value)} autoFocus />
+                <button className="btn btn-sm btn-primary" onClick={() => completeFu(it.id)}>Save</button>
+                <button className="btn btn-sm btn-light" onClick={() => setCompletingId(null)}>Cancel</button>
+              </div></div>
+            )}
+          </div>))}
+
+      <div className="fs-13 fw-7 text-muted-c mb-1 mt-3">Activity history ({activities.length})</div>
+      {activities.length === 0 ? <div className="text-muted-c fs-12">No activities yet.</div> :
+        <div style={{ maxHeight: 170, overflow: 'auto' }}>
+          {activities.map((a) => (
+            <div key={a.id} className="py-1 border-bottom">
+              <div className="fs-13 fw-6">{a.activity_type} · {a.subject}</div>
+              <div className="fs-12 text-muted-c">{fmtDT(a.activity_datetime)}{a.outcome ? ` · ${a.outcome}` : ''}</div>
+            </div>))}
+        </div>}
+    </Modal>
   );
 }

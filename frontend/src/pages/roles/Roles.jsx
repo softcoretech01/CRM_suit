@@ -40,7 +40,7 @@ export default function Roles() {
     setModal(true);
   };
 
-  const saveRole = () => {
+  const saveRole = async () => {
     if (!nr.name.trim()) { toast.error('Name required', 'Please enter a role name.'); return; }
     
     if (editingId) {
@@ -48,8 +48,13 @@ export default function Roles() {
       toast.success('Role updated', 'Role details have been updated.');
     } else {
       let matrix = blankMatrix();
-      addRole({ name: nr.name, description: nr.description, matrix });
-      toast.success('Role created', `Proceed to permissions to configure the new role.`);
+      try {
+        await addRole({ name: nr.name, description: nr.description, matrix });
+        toast.success('Role created', `Proceed to permissions to configure the new role.`);
+      } catch (err) {
+        toast.error('Failed', 'Could not create role');
+        return;
+      }
     }
     setModal(false);
     setEditingId(null);

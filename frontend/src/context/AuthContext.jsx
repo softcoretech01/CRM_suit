@@ -1,12 +1,12 @@
-import { createContext, useContext, useState, useCallback } from 'react';
-import { currentUser as defaultUser } from '../data/mockData';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { useCrm } from './CrmContext';
 
 const AuthContext = createContext(null);
 const USER_KEY = 'ts_user';
+const TOKEN_KEY = 'token';
 
 export function AuthProvider({ children }) {
-  const { roles } = useCrm();
+  const { roles } = useCrm() || {};
 
   const [currentUser, setCurrentUser] = useState(() => {
     const stored = sessionStorage.getItem(USER_KEY);
@@ -14,26 +14,31 @@ export function AuthProvider({ children }) {
       try {
         return JSON.parse(stored);
       } catch (e) {
-        // ignore
+        return null;
       }
     }
-    return defaultUser;
+    return null;
   });
 
-  // Ensure currentUser has the up-to-date role definition from CrmContext
-  const userWithRole = {
+  const userWithRole = currentUser ? {
     ...currentUser,
-    roleDef: roles?.find((r) => r.name === currentUser.role) || { matrix: {} }
-  };
+    roleDef: roles?.find((r) => r.id === currentUser.role_id) || { matrix: {} }
+  } : null;
 
-  const login = useCallback((user) => {
+  const login = useCallback((user, token) => {
     setCurrentUser(user);
     sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+    if (token) {
+        sessionStorage.setItem(TOKEN_KEY, token);
+    }
   }, []);
 
   const logout = useCallback(() => {
-    setCurrentUser(defaultUser);
+    setCurrentUser(null);
     sessionStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    // Ideally redirect to login page here if managed by router, but simple reload works too
+    window.location.reload();
   }, []);
 
   const value = {

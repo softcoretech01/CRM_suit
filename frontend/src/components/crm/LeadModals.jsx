@@ -4,11 +4,12 @@ import { Field } from '../common/Ui';
 import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { formatINR, formatINRFull } from '../../utils/format';
-import { salespeople, priorities } from '../../data/mockData';
+import { salespeople } from '../../data/mockData';
 
 // ---------- Assign Lead ----------
 export function AssignModal({ open, onClose, lead }) {
-  const { updateLead } = useCrm();
+  const crm = useCrm();
+  const { updateLead } = crm;
   const toast = useToast();
   const [assignTo, setAssignTo] = useState(lead?.assignedTo || '');
   const [priority, setPriority] = useState(lead?.priority || 'Medium');
@@ -41,7 +42,7 @@ export function AssignModal({ open, onClose, lead }) {
       <div className="surface p-3 mb-3" style={{ background: 'var(--primary-softer)' }}>
         <div className="fs-12 text-muted-c">Lead</div>
         <div className="fw-7">{lead.company}</div>
-        <div className="fs-12 text-secondary-c mt-1">Current owner: <b>{lead.assignedTo || lead.owner}</b></div>
+        <div className="fs-12 text-secondary-c mt-1">Current owner: <b>{lead.assignedTo}</b></div>
       </div>
       <div className="row">
         <Field label="Assign To" required col={12}>
@@ -52,7 +53,7 @@ export function AssignModal({ open, onClose, lead }) {
         </Field>
         <Field label="Priority" col={12}>
           <select className="form-select" value={priority} onChange={(e) => setPriority(e.target.value)}>
-            {priorities.map((p) => <option key={p.code} value={p.name}>{p.name}</option>)}
+            {crm.priorities?.map((p) => <option key={p.id || p.code || p.name} value={p.name}>{p.name}</option>)}
           </select>
         </Field>
         <Field label="Reason (optional)" col={12}>
@@ -65,23 +66,50 @@ export function AssignModal({ open, onClose, lead }) {
 
 // ---------- Convert Lead ----------
 export function ConvertModal({ open, onClose, lead }) {
-  const { updateLead, addOpportunity, opportunities } = useCrm();
+  const { updateLead, companies, contacts, addCompany, addContact } = useCrm();
   const toast = useToast();
-  const [createCompany, setCreateCompany] = useState(true);
-  const [createContact, setCreateContact] = useState(true);
+  
+  // Check if they already exist
+  const companyExists = lead ? companies.some(c => c.name === lead.company) : false;
+  const contactExists = lead ? contacts.some(c => c.name === lead.contact) : false;
+
+  const [createCompany, setCreateCompany] = useState(!companyExists);
+  const [createContact, setCreateContact] = useState(!contactExists);
 
   if (!lead) return null;
 
   const submit = () => {
-    // Simply mark the lead as Converted. Opportunity creation is now handled separately.
+    let companyId = lead.companyId;
+
+    if (createCompany && !companyExists) {
+      const newComp = addCompany({ 
+        name: lead.company,
+        industry: lead.industry,
+        owner: lead.assignedTo
+      });
+      companyId = newComp.id;
+    }
+
+    if (createContact && !contactExists) {
+      addContact({
+        name: lead.contact,
+        company: lead.company,
+        companyId: companyId,
+        email: lead.contactEmail,
+        mobile: lead.contactMobile,
+        decisionMaker: true
+      });
+    }
+
+    // Mark the lead as Converted.
     updateLead(lead.id, { status: 'Converted', converted: true });
     toast.success('Lead converted', `${lead.company} marked as Converted.`);
     onClose();
   };
 
-  const CheckRow = ({ checked, onChange, label, desc }) => (
-    <label className="d-flex align-items-center gap-3 p-3 mb-2" style={{ border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer', background: checked ? 'var(--primary-softer)' : '#fff' }}>
-      <input type="checkbox" className="form-check-input mt-0" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+  const CheckRow = ({ checked, onChange, label, desc, disabled }) => (
+    <label className={`d-flex align-items-center gap-3 p-3 mb-2 ${disabled ? 'opacity-50' : ''}`} style={{ border: '1px solid var(--border)', borderRadius: 10, cursor: disabled ? 'default' : 'pointer', background: checked ? 'var(--primary-softer)' : '#fff' }}>
+      <input type="checkbox" className="form-check-input mt-0" checked={checked} onChange={(e) => !disabled && onChange(e.target.checked)} disabled={disabled} />
       <span style={{ flex: 1 }}>
         <div className="fw-6">{label}</div>
         <div className="fs-12 text-muted-c">{desc}</div>
@@ -111,8 +139,20 @@ export function ConvertModal({ open, onClose, lead }) {
         <div className="fw-7">{lead.company}</div>
       </div>
 
-      <CheckRow checked={createCompany} onChange={setCreateCompany} label="Create Company" desc="Add company record to your CRM" />
-      <CheckRow checked={createContact} onChange={setCreateContact} label="Create Contact" desc="Add the primary contact" />
+      <CheckRow 
+        checked={companyExists ? false : createCompany} 
+        onChange={setCreateCompany} 
+        label={companyExists ? "Company Exists" : "Create Company"} 
+        desc={companyExists ? "This company is already in your CRM" : "Add company record to your CRM"} 
+        disabled={companyExists}
+      />
+      <CheckRow 
+        checked={contactExists ? false : createContact} 
+        onChange={setCreateContact} 
+        label={contactExists ? "Contact Exists" : "Create Contact"} 
+        desc={contactExists ? "This contact is already in your CRM" : "Add the primary contact"}
+        disabled={contactExists}
+      />
     </Modal>
   );
 }

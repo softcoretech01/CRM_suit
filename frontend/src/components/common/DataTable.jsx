@@ -174,7 +174,9 @@ export default function DataTable({
               </tr>
             </thead>
             <tbody>
-              {paged.map((r) => (
+              {paged.map((r, rowIndex) => {
+                const globalIndex = (safePage - 1) * pageSize + rowIndex + 1;
+                return (
                 <tr
                   key={r[keyField]}
                   className={onRowClick ? 'dt-linkrow' : ''}
@@ -187,11 +189,11 @@ export default function DataTable({
                   )}
                   {columns.map((c) => (
                     <td key={c.key} className={c.className} style={{ padding: compact ? '9px 16px' : undefined }}>
-                      {c.render ? c.render(r) : r[c.key] ?? '—'}
+                      {c.render ? c.render(r, globalIndex) : r[c.key] ?? '—'}
                     </td>
                   ))}
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         )}

@@ -30,7 +30,7 @@ export default function ApprovalCenter() {
   const columns = [
     { key: 'type', label: 'Type', sortable: true, render: r => <Badge tone="tone-gray">{r.type}</Badge> },
     { key: 'reference', label: 'Reference', sortable: true, render: r => <span className="mono fw-6 text-primary-c">{r.reference}</span> },
-    { key: 'requestedBy', label: 'Requested By', render: r => <UserCell name={r.requestedBy} /> },
+    { key: 'requestedBy', label: 'Requested By', render: r => <UserCell name={r.requestedBy} hideAvatar /> },
     { key: 'amount', label: 'Amount', sortable: true, render: r => <span className="mono fw-6">{formatINR(r.amount)}</span> },
     { key: 'date', label: 'Date Submitted', sortable: true },
     { key: 'priority', label: 'Priority', render: r => {
@@ -58,7 +58,7 @@ export default function ApprovalCenter() {
     <div className="page">
       <PageHeader
         title="Approval Center"
-        subtitle="Manage pending approvals for quotations, campaigns and more"
+        subtitle="Manage pending approvals for campaigns and more"
         icon="bi-check2-square"
       />
 

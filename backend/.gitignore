@@ -1,0 +1,24 @@
+# Environments
+.env
+.venv
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Uploads and User Data
+uploads/
+crm.db
+
+# VS Code / IDEs
+.vscode/
+.idea/
+
+# Node
+node_modules/

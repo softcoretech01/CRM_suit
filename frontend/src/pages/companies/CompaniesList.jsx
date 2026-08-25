@@ -1,38 +1,43 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
+import DateRangeBar, { inRange } from '../../components/common/DateRangeBar';
 import { Badge, Avatar, EmptyState, Field, Section } from '../../components/common/Ui';
 import { Drawer } from '../../components/common/Overlay';
 import ActionIconButton from '../../components/common/ActionIconButton';
+import { ImageCropperModal } from '../../components/common/ImageCropperModal';
 import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { formatINR, statusTone } from '../../utils/format';
-import { industries, states, cities, countries, salespeople } from '../../data/mockData';
+import { salespeople } from '../../data/mockData';
+import GeographySelect from '../../components/common/GeographySelect';
 
-const COMPANY_TYPES = ['Private Limited', 'Public Limited', 'LLP', 'Partnership', 'Proprietorship'];
 const STATUS_OPTIONS = ['Active', 'Prospect', 'Inactive', 'Paused'];
 
 const emptyForm = {
-  name: '', legalName: '', industry: 'Manufacturing', website: '', employees: '', revenue: '',
-  gst: '', pan: '', type: 'Private Limited',
-  address: '', city: 'Coimbatore', state: 'Tamil Nadu', country: 'India', pin: '',
-  owner: salespeople[0] || '', remarks: '',
+  name: '', industry: '', type: '',
+  address: '', city_id: '', state_id: '', country_id: '',
+  remarks: ''
 };
 
 export default function CompaniesList() {
-  const navigate = useNavigate();
   const crm = useCrm();
+  const { industries, states, cities, countries, companyTypes } = crm;
+  const navigate = useNavigate();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [drawer, setDrawer] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const logoInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
 
   const [fIndustry, setFIndustry] = useState('');
   const [fStatus, setFStatus] = useState('');
   const [fType, setFType] = useState('');
+  const [range, setRange] = useState({ from: '', to: '' });
 
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 500);
@@ -50,72 +55,111 @@ export default function CompaniesList() {
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  const [cropSrc, setCropSrc] = useState(null);
+  const [isCropping, setIsCropping] = useState(false);
+
+  const handleLogoSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropSrc(reader.result);
+      setIsCropping(true);
+    };
+    reader.readAsDataURL(file);
+    if (logoInputRef.current) logoInputRef.current.value = '';
+  };
+
+  const handleLogoCrop = async (croppedFile) => {
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', croppedFile);
+    try {
+      const token = sessionStorage.getItem('token');
+      const res = await fetch('http://127.0.0.1:8000/api/masters/companies/upload-logo', {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      if (data.logo_url) {
+        setForm((f) => ({ ...f, logo_url: data.logo_url }));
+        toast.success('Logo uploaded successfully');
+      }
+    } catch (err) {
+      toast.error('Upload failed', err.message || 'Could not upload logo');
+    } finally {
+      setUploading(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  };
+
   const rows = useMemo(() => {
     return crm.companies.filter((c) =>
       (!fIndustry || c.industry === fIndustry) &&
       (!fStatus || c.status === fStatus) &&
-      (!fType || c.type === fType)
+      (!fType || c.type === fType) &&
+      inRange(c.created_at, range)
     );
-  }, [crm.companies, fIndustry, fStatus, fType]);
+  }, [crm.companies, fIndustry, fStatus, fType, range]);
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) { toast.error('Company name required', 'Please enter a company name.'); return; }
-    if (form.id) {
-      crm.updateCompany(form.id, {
-        ...form,
-        employees: Number(form.employees) || 0,
-        revenue: Number(form.revenue) || 0,
-      });
-      toast.success('Company updated', `${form.name} was saved.`);
-    } else {
-      const rec = crm.addCompany({
-        ...form,
-        employees: Number(form.employees) || 0,
-        revenue: Number(form.revenue) || 0,
-      });
-      toast.success('Company added', `${rec.name} was created (${rec.code}).`);
+    try {
+      const payload = { ...form };
+      if (payload.country_id) payload.country = countries?.find(x => String(x.id) === String(payload.country_id))?.name || '';
+      if (payload.state_id) payload.state = states?.find(x => String(x.id) === String(payload.state_id))?.name || '';
+      if (payload.city_id) payload.city = cities?.find(x => String(x.id) === String(payload.city_id))?.name || '';
+      delete payload.country_id;
+      delete payload.state_id;
+      delete payload.city_id;
+
+      if (form.id) {
+        await crm.updateCompany(form.id, payload);
+        toast.success('Company updated', `${form.name} was saved.`);
+      } else {
+        const rec = await crm.addCompany(payload);
+        toast.success('Company added', `${rec.name} was created (${rec.code || ''}).`);
+      }
+      setDrawer(false);
+      setForm(emptyForm);
+    } catch (err) {
+      toast.error('Error', 'Failed to save company');
     }
-    setDrawer(false);
-    setForm(emptyForm);
   };
 
   const openEdit = (c) => {
-    setForm(c);
+    let country_id = '';
+    let state_id = '';
+    let city_id = '';
+    if (c.country) country_id = countries?.find(x => x.name === c.country)?.id || '';
+    if (c.state) state_id = states?.find(x => x.name === c.state)?.id || '';
+    if (c.city) city_id = cities?.find(x => x.name === c.city)?.id || '';
+    setForm({ ...emptyForm, ...c, country_id, state_id, city_id });
     setDrawer(true);
   };
 
-  const doDelete = (c) => {
+  const doDelete = async (c) => {
     if (window.confirm(`Are you sure you want to delete ${c.name}?`)) {
-      crm.deleteCompany(c.id);
-      toast.success('Company Deleted', 'The company was removed.');
+      try {
+        await crm.deleteCompany(c.id);
+        toast.success('Company Deleted', 'The company was removed.');
+      } catch (err) {
+        toast.error('Error', 'Failed to delete company');
+      }
     }
   };
 
   const columns = [
-    { key: 'code', label: 'Company No', sortable: true, className: 'mono text-nowrap', render: (r) => r.code },
+    { key: 'sno', label: 'S.No', width: '70px', render: (_, idx) => <span className="text-secondary-c">{idx}</span> },
     {
       key: 'name', label: 'Company', sortable: true, accessor: (r) => r.name, className: 'text-nowrap',
-      render: (r) => (
-        <div className="d-flex align-items-center gap-2 text-nowrap">
-          <Avatar name={r.name} size="md" />
-          <div style={{ minWidth: 0 }}>
-            <div className="fw-6 text-nowrap" style={{ lineHeight: 1.2 }}>{r.name}</div>
-          </div>
-        </div>
-      ),
+      render: (r) => <span className="fw-6 text-nowrap">{r.name}</span>,
     },
     { key: 'industry', label: 'Industry', sortable: true, className: 'text-nowrap', render: (r) => <Badge tone="tone-gray">{r.industry}</Badge> },
-    {
-      key: 'city', label: 'Location', sortable: true, className: 'text-nowrap',
-      render: (r) => (
-        <div className="text-nowrap">
-          <div className="fw-6 text-nowrap" style={{ lineHeight: 1.2 }}>{r.city}</div>
-          <div className="fs-12 text-muted-c text-nowrap">{r.state}</div>
-        </div>
-      ),
-    },
-    { key: 'employees', label: 'Employees', sortable: true, className: 'mono text-nowrap', accessor: (r) => r.employees, render: (r) => (r.employees || 0).toLocaleString('en-IN') },
-    { key: 'revenue', label: 'Revenue', sortable: true, className: 'mono text-nowrap', accessor: (r) => r.revenue, render: (r) => formatINR((r.revenue || 0) * 100000) },
+    { key: 'type', label: 'Type', sortable: true, className: 'text-nowrap' },
+    { key: 'city', label: 'City', sortable: true, className: 'text-nowrap' },
     { key: 'status', label: 'Status', sortable: true, className: 'text-nowrap', render: (r) => <Badge tone={statusTone(r.status)} dot>{r.status}</Badge> },
     {
       key: 'actions', label: 'Action', width: '100px',
@@ -133,15 +177,11 @@ export default function CompaniesList() {
     <>
       <select className="form-select form-select-sm" style={{ width: 160 }} value={fIndustry} onChange={(e) => setFIndustry(e.target.value)}>
         <option value="">All Industries</option>
-        {industries.map((i) => <option key={i.code} value={i.name}>{i.name}</option>)}
+        {industries?.map((i) => <option key={i.id || i.code} value={i.name}>{i.name}</option>)}
       </select>
       <select className="form-select form-select-sm" style={{ width: 150 }} value={fType} onChange={(e) => setFType(e.target.value)}>
         <option value="">All Types</option>
-        {COMPANY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-      </select>
-      <select className="form-select form-select-sm" style={{ width: 140 }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-        <option value="">All Status</option>
-        {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+        {companyTypes?.map((t) => <option key={t.id || t.code || t.name} value={t.name}>{t.name}</option>)}
       </select>
     </>
   );
@@ -154,11 +194,12 @@ export default function CompaniesList() {
         icon="bi-building"
         actions={
           <>
-            <button className="btn btn-primary" onClick={() => navigate('/companies?new=1')}><i className="bi bi-plus-lg" /> New Company</button>
+            <button className="btn btn-primary" onClick={() => { setForm(emptyForm); setDrawer(true); }}><i className="bi bi-plus-lg" /> New Company</button>
           </>
         }
       />
 
+      <DateRangeBar onApply={setRange} />
       <DataTable
         columns={columns}
         rows={rows}
@@ -166,7 +207,7 @@ export default function CompaniesList() {
         loading={loading}
         onRowClick={(r) => navigate(`/companies/${r.id}`)}
         searchPlaceholder="Search companies, code, city..."
-        searchKeys={['name', 'code', 'legalName', 'city', 'address', 'gst', 'owner']}
+        searchKeys={['name', 'code', 'legalName', 'city', 'address', 'gst']}
         filters={filters}
         empty={<EmptyState icon="bi-building" title="No companies found" message="Try adjusting filters, or add a new company." action={<button className="btn btn-primary" onClick={() => { setForm(emptyForm); setDrawer(true); }}><i className="bi bi-plus-lg" /> Add Company</button>} />}
       />
@@ -185,78 +226,42 @@ export default function CompaniesList() {
           </>
         }
       >
-        <Section title="Company Info" icon="bi-building">
+        <Section title="Details" icon="bi-pencil-square">
           <div className="row">
             <Field label="Company Name" required col={12}>
-              <input className="form-control" value={form.name} onChange={set('name')} placeholder="e.g. ABC Manufacturing Pvt Ltd" />
-            </Field>
-            <Field label="Legal Name" col={12}>
-              <input className="form-control" value={form.legalName} onChange={set('legalName')} placeholder="Registered legal name" />
+              <input className="form-control" value={form.name} onChange={set('name')} placeholder="Company Name" />
             </Field>
             <Field label="Industry" col={6}>
-              <select className="form-select" value={form.industry} onChange={set('industry')}>
-                {industries.map((i) => <option key={i.code} value={i.name}>{i.name}</option>)}
+              <select className="form-select" value={form.industry || ''} onChange={set('industry')}>
+                <option value="">Select industry...</option>
+                {industries?.map((i) => <option key={i.id || i.code} value={i.name}>{i.name}</option>)}
               </select>
-            </Field>
-            <Field label="Website" col={6}>
-              <input className="form-control" value={form.website} onChange={set('website')} placeholder="www.example.com" />
-            </Field>
-            <Field label="Employees" col={6}>
-              <input type="number" className="form-control" value={form.employees} onChange={set('employees')} placeholder="0" />
-            </Field>
-            <Field label="Annual Revenue (₹ Lakh)" col={6}>
-              <input type="number" className="form-control" value={form.revenue} onChange={set('revenue')} placeholder="0" />
-            </Field>
-          </div>
-        </Section>
-
-        <Section title="Registration" icon="bi-receipt">
-          <div className="row">
-            <Field label="GST Number" col={6}>
-              <input className="form-control" value={form.gst} onChange={set('gst')} placeholder="33AABCA1234F1Z5" />
-            </Field>
-            <Field label="PAN" col={6}>
-              <input className="form-control" value={form.pan} onChange={set('pan')} placeholder="AABCA1234F" />
             </Field>
             <Field label="Company Type" col={6}>
-              <select className="form-select" value={form.type} onChange={set('type')}>
-                {COMPANY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              <select className="form-select" value={form.type || ''} onChange={set('type')}>
+                <option value="">Select type...</option>
+                {companyTypes?.map((t) => <option key={t.id || t.code || t.name} value={t.name}>{t.name}</option>)}
               </select>
             </Field>
-            <Field label="Owner" col={6}>
-              <select className="form-select" value={form.owner} onChange={set('owner')}>
-                {salespeople.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </Field>
-          </div>
-        </Section>
-
-        <Section title="Address" icon="bi-geo-alt">
-          <div className="row">
             <Field label="Address" col={12}>
-              <input className="form-control" value={form.address} onChange={set('address')} placeholder="Street, area" />
+              <input className="form-control" value={form.address} onChange={set('address')} placeholder="Address" />
             </Field>
-            <Field label="City" col={6}>
-              <select className="form-select" value={form.city} onChange={set('city')}>
-                {cities.map((c) => <option key={c.code} value={c.name}>{c.name}</option>)}
-              </select>
-            </Field>
-            <Field label="State" col={6}>
-              <select className="form-select" value={form.state} onChange={set('state')}>
-                {states.map((s) => <option key={s.code} value={s.name}>{s.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Country" col={6}>
-              <select className="form-select" value={form.country} onChange={set('country')}>
-                {countries.map((c) => <option key={c.code} value={c.name}>{c.name}</option>)}
-              </select>
-            </Field>
-            <Field label="PIN Code" col={6}>
-              <input className="form-control" value={form.pin} onChange={set('pin')} placeholder="641021" />
+            <GeographySelect countryId={form.country_id} stateId={form.state_id} cityId={form.city_id} onChange={(k, v) => setForm((f) => ({ ...f, [k]: v }))} layout={4} />
+            <Field label="Remarks" col={12}>
+              <textarea className="form-control" rows={3} value={form.remarks} onChange={set('remarks')} placeholder="Remarks" />
             </Field>
           </div>
         </Section>
       </Drawer>
+
+      <ImageCropperModal 
+        isOpen={isCropping}
+        onClose={() => setIsCropping(false)}
+        imageSrc={cropSrc}
+        onCropCompleteAction={handleLogoCrop}
+        aspectRatio={16/9}
+        title="Crop Logo"
+      />
     </div>
   );
 }

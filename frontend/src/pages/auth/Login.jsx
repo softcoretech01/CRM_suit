@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../context/ToastContext';
 import { usePortal } from '../../context/PortalContext';
 import { useAuth } from '../../context/AuthContext';
+import { useCrm } from '../../context/CrmContext';
 import { PORTALS } from '../../config/portals';
+import { allowedPortalsFor, defaultMatrixFor } from '../../data/permissionDefaults';
 import './auth.css';
 
 // Login-card portal visuals (ordered Admin · Masters · CRM to match the design)
@@ -130,6 +132,7 @@ export default function Login() {
   const toast = useToast();
   const { signIn } = usePortal();
   const { login } = useAuth();
+  const { users, roles, fetchAll } = useCrm();
 
   const [portalId, setPortalId] = useState('');
   const [showPwd, setShowPwd] = useState(false);
@@ -138,7 +141,18 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const submit = (e) => {
+  // Resolve the entered username against the real users loaded from the backend
+  const findUser = (input) => {
+    const q = input.trim().toLowerCase();
+    return users.find((u) =>
+      (u.username || '').toLowerCase() === q ||
+      (u.email || '').toLowerCase() === q ||
+      (u.name || '').toLowerCase() === q ||
+      (u.name || '').toLowerCase().split(' ')[0] === q
+    );
+  };
+
+  const submit = async (e) => {
     e.preventDefault();
     const err = {};
     if (!portalId) err.portal = 'Please select a portal';
@@ -151,35 +165,81 @@ export default function Login() {
     }
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ username, password })
+      });
+
+      const data = await response.json();
       
-      let userRole = 'Manager';
-      let userName = 'Rajesh Menon';
-      
-      const u = username.toLowerCase();
-      if (u.includes('admin') || u.includes('ceo')) {
-        userRole = 'CEO';
-        userName = 'Executive CEO';
-      } else if (u.includes('marketing')) {
-        userRole = 'Marketing';
-        userName = 'Priya Marketing';
-      } else if (u.includes('manager')) {
-        userRole = 'Manager';
-        userName = 'Sales Manager';
+      if (!response.ok) {
+        if (data.detail === "Maximum concurrent users reached for this company.") {
+          toast.error('Limit Reached', 'The maximum number of concurrent users are already logged in.');
+        } else {
+          toast.error('Login failed', data.detail || 'Invalid credentials');
+        }
+        setLoading(false);
+        return;
       }
 
-      login({
-        id: `USR-${Date.now()}`,
-        name: userName,
-        role: userRole,
-        avatarColor: '#2563eb'
-      });
+      const user = data.user;
       
+      // Enforce portal access based on the user's role permissions.
+      // Prefer the real permission matrix the backend returns (source of truth,
+      // reflects anything configured on the Permissions screen). Only fall back
+      // to a role-name default when the role has no permissions configured yet,
+      // so a brand-new role isn't accidentally locked out of every portal.
+      const backendMatrix = user.permissions || user.matrix;
+      const role = roles.find((r) => r.code === user.role_code || r.name === user.role_name);
+      const hasBackendMatrix = backendMatrix && typeof backendMatrix === 'object'
+        && allowedPortalsFor(backendMatrix).length > 0;
+      const matrix = hasBackendMatrix
+        ? backendMatrix
+        : (role?.matrix || defaultMatrixFor(user.role_name || user.role_code || ''));
+      const allowed = allowedPortalsFor(matrix);
+      if (!allowed.includes(portalId)) {
+        const allowedNames = allowed.map((p) => PORTALS[p]?.short).filter(Boolean).join(', ') || 'no portals';
+        toast.error(
+          'Access denied',
+          `Your role (${user.role_name}) does not have access to the ${PORTALS[portalId].name}. Allowed: ${allowedNames}.`
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Store auth token in sessionStorage so other API calls can use it
+      sessionStorage.setItem('token', data.access_token);
+      localStorage.setItem('access_token', data.access_token);
+
+      // Sign in locally
+      login({
+        id: user.id,
+        role_id: user.role_id,
+        tenant_company_id: user.tenant_company_id,
+        tenant_company_name: user.tenant_company_name || user.company_name,
+        companyName: user.tenant_company_name || user.company_name,
+        name: user.full_name || user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username,
+        role: user.role_name,
+        role_code: user.role_code || user.role_name,
+        permissions: user.permissions,
+        profile_pic: user.profile_pic || '',
+        avatarColor: user.color || '#2563eb',
+      });
+
+      // Enter the portal first so login can't be blocked by a data refresh
       signIn(portalId);
-      toast.success('Signed in', `Welcome to the ${PORTALS[portalId].name}`);
+      toast.success('Signed in', `Welcome ${user.full_name || user.name || user.username} — ${user.tenant_company_name || user.company_name || 'System'}`);
       navigate(PORTALS[portalId].home);
-    }, 800);
+
+      // Refresh app data now that we have an auth token (fire-and-forget)
+      try { if (fetchAll) fetchAll(); } catch (_) { /* ignore */ }
+    } catch (e) {
+      toast.error('Login failed', 'Network error or server is down.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -306,7 +366,6 @@ export default function Login() {
             <div className="lc-field">
               <div className="lc-flabel-row">
                 <label className="lc-flabel">Password</label>
-                <a href="#" onClick={(e) => { e.preventDefault(); toast.info('Password reset', 'A reset link would be sent to your email.'); }}>Forgot password?</a>
               </div>
               <div className="lc-input">
                 <i className="bi bi-lock" />

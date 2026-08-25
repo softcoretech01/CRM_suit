@@ -1,24 +1,21 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
 import { Badge, UserCell, EmptyState, Field, Section } from '../../components/common/Ui';
 import { Drawer, ConfirmDialog } from '../../components/common/Overlay';
 import ActionIconButton from '../../components/common/ActionIconButton';
+import { ImageCropperModal } from '../../components/common/ImageCropperModal';
 import { MiniStat } from '../../components/common/PageParts';
 import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { formatDate, statusTone, colorFor } from '../../utils/format';
-import { roles } from '../../data/mockData';
 
-const DEPARTMENTS = ['Sales', 'Marketing', 'Support', 'Accounts', 'Management', 'IT'];
-const BRANCHES = ['Coimbatore HQ', 'Chennai Branch', 'Bengaluru Branch'];
 const STATUS_OPTIONS = ['Active', 'Inactive'];
 
 const emptyForm = {
-  name: '', department: 'Sales', designation: '', branch: 'Coimbatore HQ', joining: '',
-  username: '', email: '', mobile: '', password: '', confirm: '',
-  role: 'Sales Executive', manager: '', status: 'Active',
-  education: '', address: '', aadhar: '', age: '', gender: '',
+  name: '', companyId: '', department: '', designation: '', joining: '',
+  username: '', email: '', mobile: '', password: '', confirm: '', currentPassword: '',
+  role: 'Sales Executive', status: 'Active',
   profilePic: '', signature: '',
 };
 
@@ -35,8 +32,49 @@ export default function UsersList() {
   const [fDept, setFDept] = useState('');
   const [fRole, setFRole] = useState('');
   const [fStatus, setFStatus] = useState('');
-  const [fBranch, setFBranch] = useState('');
   const [viewUser, setViewUser] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const profilePicInputRef = useRef(null);
+  const [uploadingPic, setUploadingPic] = useState(false);
+  const [cropSrc, setCropSrc] = useState(null);
+  const [isCropping, setIsCropping] = useState(false);
+
+  const handleProfilePicSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropSrc(reader.result);
+      setIsCropping(true);
+    };
+    reader.readAsDataURL(file);
+    if (profilePicInputRef.current) profilePicInputRef.current.value = '';
+  };
+
+  const handleProfilePicCrop = async (croppedFile) => {
+    setUploadingPic(true);
+    const formData = new FormData();
+    formData.append('file', croppedFile);
+    try {
+      const token = sessionStorage.getItem('token');
+      const res = await fetch('http://127.0.0.1:8000/api/admin/users/upload-profile-pic', {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      if (data.profile_pic) {
+        setForm((f) => ({ ...f, profile_pic: data.profile_pic, profilePic: data.profile_pic }));
+        toast.success('Photo uploaded', 'Profile picture uploaded successfully.');
+      }
+    } catch (err) {
+      toast.error('Upload failed', err.message || 'Could not upload profile picture');
+    } finally {
+      setUploadingPic(false);
+      if (profilePicInputRef.current) profilePicInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 500);
@@ -46,11 +84,10 @@ export default function UsersList() {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const rows = useMemo(() => crm.users.filter((u) =>
-    (!fDept || u.department === fDept) &&
+    (!fDept || (u.department && u.department.toLowerCase().includes(fDept.toLowerCase()))) &&
     (!fRole || u.role === fRole) &&
-    (!fStatus || u.status === fStatus) &&
-    (!fBranch || u.branch === fBranch)
-  ), [crm.users, fDept, fRole, fStatus, fBranch]);
+    (!fStatus || u.status === fStatus)
+  ), [crm.users, fDept, fRole, fStatus]);
 
   const kpis = useMemo(() => {
     const total = crm.users.length;
@@ -60,59 +97,120 @@ export default function UsersList() {
     return { total, active, inactive, depts };
   }, [crm.users]);
 
-  const openAdd = () => { setEditingId(null); setForm(emptyForm); setDrawer(true); };
+  const openAdd = () => {
+    setEditingId(null);
+    setShowPassword(false);
+    // Default to a real role that exists in the backend so the role lookup succeeds
+    setForm({ ...emptyForm, role: crm.roles[0]?.name || '' });
+    setDrawer(true);
+  };
   const openEdit = (u) => {
     setEditingId(u.id);
-    setForm({ ...emptyForm, ...u, password: '', confirm: '' });
+    setShowPassword(false);
+    setForm({ ...emptyForm, ...u, companyId: u.tenant_company_id || '', password: '', confirm: '', currentPassword: u.password_plain || '' });
     setDrawer(true);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!form.name.trim()) { toast.error('Name required', 'Please enter the employee name.'); return; }
-    if (!form.email.trim()) { toast.error('Email required', 'Please enter a login email.'); return; }
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
+    if (!emailOk) { toast.error('Valid email required', 'Please enter a valid login email (e.g. name@techspire.in).'); return; }
+    
     if (!editingId && !form.password) { toast.error('Password required', 'Please set a login password.'); return; }
+    if (!editingId && form.password.length < 8) {
+      toast.error('Password too short', 'Password must be at least 8 characters.');
+      return;
+    }
     if ((form.password || form.confirm) && form.password !== form.confirm) {
       toast.error('Passwords do not match', 'Please re-enter matching passwords.');
       return;
     }
+    if (!editingId && !form.role) { toast.error('Role required', 'Please select a role for this user.'); return; }
+    
     const payload = {
-      name: form.name, department: form.department, designation: form.designation, branch: form.branch,
-      email: form.email, mobile: form.mobile, role: form.role, manager: form.manager,
+      name: form.name, username: form.username, companyId: form.companyId, department: form.department, designation: form.designation,
+      email: form.email, mobile: form.mobile, role: form.role,
       joining: form.joining, status: form.status, color: colorFor(form.name),
+      password: form.password || '',
+      profile_pic: form.profile_pic || form.profilePic || '',
     };
-    if (editingId) {
-      crm.updateUser(editingId, payload);
-      toast.success('User updated', `${payload.name} was saved.`);
-    } else {
-      const rec = crm.addUser(payload);
-      toast.success('User added', `${rec.name} was created (${rec.id}).`);
+    try {
+      if (editingId) {
+        await crm.updateUser(editingId, payload);
+        toast.success('User updated', `${payload.name} was saved.`);
+      } else {
+        const rec = await crm.addUser(payload);
+        if (rec) toast.success('User added', `${rec.name} was created (${rec.id}).`);
+      }
+    } catch (err) {
+      toast.error('Save failed', err?.message || 'Please check the details and try again.');
+      return;
     }
     setDrawer(false);
     setEditingId(null);
     setForm(emptyForm);
   };
 
-  const toggleStatus = (u) => {
+  const toggleStatus = async (u) => {
     const next = u.status === 'Active' ? 'Inactive' : 'Active';
-    crm.updateUser(u.id, { status: next });
-    toast.success(`User ${next === 'Active' ? 'activated' : 'deactivated'}`, `${u.name} is now ${next}.`);
+    try {
+      await crm.updateUser(u.id, { status: next });
+      toast.success(`User ${next === 'Active' ? 'activated' : 'deactivated'}`, `${u.name} is now ${next}.`);
+    } catch (err) {
+      toast.error('Update failed', err?.message || 'Could not change status.');
+    }
   };
 
-  const doDelete = (u) => {
-    crm.deleteUser(u.id);
-    toast.success('User deleted', `${u.name} was removed.`);
+  const doDelete = async (u) => {
+    try {
+      await crm.deleteUser(u.id);
+      toast.success('User deleted', `${u.name} was removed.`);
+      setConfirm(null);
+    } catch (err) {
+      toast.error('Delete failed', err?.message || 'Could not delete the user.');
+    }
   };
 
   const columns = [
-    { key: 'id', label: 'User ID', className: 'mono', sortable: true, width: '100px' },
+    { key: 'sno', label: 'S.No', width: '70px', render: (_, idx) => <span className="text-secondary-c">{idx}</span> },
     {
       key: 'name', label: 'Employee', sortable: true, accessor: (r) => r.name,
-      render: (r) => <span className="fw-6 text-dark">{r.name}</span>,
+      render: (r) => {
+        const pic = r.profile_pic;
+        return (
+          <div className="d-flex align-items-center gap-2">
+            {pic ? (
+              <img src={pic.startsWith('http') ? pic : `http://127.0.0.1:8000${pic}`} alt={r.name} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} />
+            ) : (
+              <div className="avatar avatar-sm tone-blue" style={{ width: 28, height: 28, fontSize: 12, borderRadius: '50%' }}>
+                {r.name?.charAt(0)}
+              </div>
+            )}
+            <span className="fw-6 text-dark">{r.name}</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'company_name', label: 'Company', sortable: true,
+      render: (r) => {
+        const comp = crm.adminCompanies?.find((c) => String(c.id) === String(r.tenant_company_id)) || crm.companies?.find((c) => String(c.id) === String(r.tenant_company_id));
+        const name = r.company_name || comp?.name || '—';
+        const logo = r.company_logo || comp?.logo_url;
+        return (
+          <div className="d-flex align-items-center gap-2">
+            {logo ? (
+              <img src={logo.startsWith('http') ? logo : `http://127.0.0.1:8000${logo}`} alt="Logo" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
+            ) : (
+              <i className="bi bi-building text-teal" />
+            )}
+            <Badge tone="tone-teal">{name}</Badge>
+          </div>
+        );
+      }
     },
     { key: 'department', label: 'Department', sortable: true, render: (r) => <Badge tone="tone-gray">{r.department}</Badge> },
-    { key: 'branch', label: 'Branch', sortable: true },
     { key: 'role', label: 'Role', sortable: true, render: (r) => <Badge tone="tone-indigo">{r.role}</Badge> },
-    { key: 'manager', label: 'Reporting Manager', sortable: true, render: (r) => r.manager || '—' },
     { key: 'status', label: 'Status', sortable: true, render: (r) => <Badge tone={statusTone(r.status)} dot>{r.status}</Badge> },
     {
       key: 'actions', label: 'Action', width: '150px',
@@ -129,17 +227,10 @@ export default function UsersList() {
 
   const filters = (
     <>
-      <select className="form-select form-select-sm" style={{ width: 150 }} value={fDept} onChange={(e) => setFDept(e.target.value)}>
-        <option value="">All Departments</option>
-        {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
-      </select>
+      <input className="form-control form-control-sm" style={{ width: 150 }} placeholder="Filter Department..." value={fDept} onChange={(e) => setFDept(e.target.value)} />
       <select className="form-select form-select-sm" style={{ width: 160 }} value={fRole} onChange={(e) => setFRole(e.target.value)}>
         <option value="">All Roles</option>
-        {roles.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
-      </select>
-      <select className="form-select form-select-sm" style={{ width: 170 }} value={fBranch} onChange={(e) => setFBranch(e.target.value)}>
-        <option value="">All Branches</option>
-        {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
+        {crm.roles.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
       </select>
       <select className="form-select form-select-sm" style={{ width: 130 }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
         <option value="">All Status</option>
@@ -161,16 +252,14 @@ export default function UsersList() {
         }
       />
 
-
-
       <DataTable
-        compact={true}
         columns={columns}
         rows={rows}
         keyField="id"
         loading={loading}
+        onRowClick={(r) => setViewUser(r)}
         searchPlaceholder="Search users, email, role..."
-        searchKeys={['name', 'id', 'email', 'role', 'department', 'mobile']}
+        searchKeys={['name', 'email', 'department', 'designation', 'role', 'company_name']}
         filters={filters}
         empty={<EmptyState icon="bi-people" title="No users found" message="Try adjusting filters, or add a new user." action={<button className="btn btn-primary" onClick={openAdd}><i className="bi bi-person-plus" /> Add User</button>} />}
       />
@@ -178,8 +267,8 @@ export default function UsersList() {
       <Drawer
         open={drawer}
         onClose={() => setDrawer(false)}
-        title={editingId ? 'Edit User' : 'Add User'}
-        subtitle={editingId ? `Update ${form.id || ''}` : 'Create a new employee login'}
+        title={editingId ? "Edit User" : "Add User"}
+        subtitle={editingId ? `Editing ${form.name}` : "Create a new employee record"}
         icon="bi-person-badge"
         width={600}
         footer={
@@ -190,33 +279,52 @@ export default function UsersList() {
         }
       >
         <Section title="Employee Information" icon="bi-person-vcard">
+          <div className="d-flex align-items-center gap-3 mb-3 pb-3 border-bottom">
+            <div className="avatar avatar-xl tone-blue position-relative" style={{ width: 60, height: 60, borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--border)', flexShrink: 0 }}>
+              {(form.profile_pic || form.profilePic) ? (
+                <img
+                  src={(form.profile_pic || form.profilePic).startsWith('http') ? (form.profile_pic || form.profilePic) : `http://127.0.0.1:8000${form.profile_pic || form.profilePic}`}
+                  alt="Profile"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <span style={{ fontSize: 22, fontWeight: 700 }}>{form.name ? form.name.charAt(0).toUpperCase() : 'U'}</span>
+              )}
+            </div>
+            <div>
+              <div className="fw-6 fs-13 mb-1">Employee Profile Photo</div>
+              <div className="fs-12 text-muted-c mb-2">Upload a profile picture for this employee.</div>
+              <div className="d-flex align-items-center gap-3">
+              <input type="file" ref={profilePicInputRef} onChange={handleProfilePicSelect} accept="image/*" style={{ display: 'none' }} />
+              <div className="d-flex gap-2">
+                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => profilePicInputRef.current?.click()} disabled={uploadingPic}>
+                  <i className={`bi ${uploadingPic ? 'bi-arrow-repeat spin' : 'bi-camera'}`} /> {uploadingPic ? 'Uploading...' : 'Upload Photo'}
+                </button>
+                {(form.profile_pic || form.profilePic) && (
+                  <button type="button" className="btn btn-sm btn-light text-danger" onClick={() => setForm(f => ({ ...f, profile_pic: '', profilePic: '' }))}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+            </div>
+          </div>
+
           <div className="row">
+            <Field label="Company" col={12}>
+              <select className="form-select" value={form.companyId} onChange={set('companyId')}>
+                <option value="">-- Use Default Company --</option>
+                {crm.adminCompanies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </Field>
             <Field label="Employee Name" required col={6}>
               <input className="form-control" value={form.name} onChange={set('name')} placeholder="e.g. Arun Kumar" />
             </Field>
-            <Field label="Age" col={3}>
-              <input type="number" className="form-control" value={form.age} onChange={set('age')} placeholder="Age" />
-            </Field>
-            <Field label="Gender" col={3}>
-              <select className="form-select" value={form.gender} onChange={set('gender')}>
-                <option value="">Select</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-            </Field>
             <Field label="Department" col={6}>
-              <select className="form-select" value={form.department} onChange={set('department')}>
-                {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+              <input className="form-control" value={form.department} onChange={set('department')} placeholder="e.g. Sales" />
             </Field>
             <Field label="Designation" col={6}>
               <input className="form-control" value={form.designation} onChange={set('designation')} placeholder="e.g. Sales Executive" />
-            </Field>
-            <Field label="Branch" col={6}>
-              <select className="form-select" value={form.branch} onChange={set('branch')}>
-                {BRANCHES.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
             </Field>
             <Field label="Joining Date" col={6}>
               <input type="date" className="form-control" value={form.joining} onChange={set('joining')} />
@@ -232,14 +340,24 @@ export default function UsersList() {
             <Field label="Email" required col={6}>
               <input type="email" className="form-control" value={form.email} onChange={set('email')} placeholder="name@techspire.in" />
             </Field>
-            <Field label="Mobile" col={12}>
+            <Field label="Mobile" col={6}>
               <input className="form-control" value={form.mobile} onChange={set('mobile')} placeholder="+91 98430 12345" />
             </Field>
-            <Field label="Password" required={!editingId} col={6} hint={editingId ? 'Leave blank to keep current' : ''}>
-              <input type="password" className="form-control" value={form.password} onChange={set('password')} placeholder="••••••••" />
+            <Field label={editingId ? "New Password" : "Password"} required={!editingId} col={6} hint={editingId ? 'Leave blank to keep current' : ''}>
+              <div className="input-group">
+                <input type={showPassword ? "text" : "password"} className="form-control" value={form.password} onChange={set('password')} placeholder={editingId ? "New password" : "Password"} autoComplete="new-password" />
+                <button className="btn btn-outline-secondary bg-white text-muted" type="button" onClick={() => setShowPassword(!showPassword)}>
+                  <i className={`bi bi-eye${showPassword ? '-slash' : ''}`} />
+                </button>
+              </div>
             </Field>
             <Field label="Confirm Password" required={!editingId} col={6} error={(form.password || form.confirm) && form.password !== form.confirm ? 'Passwords do not match' : ''}>
-              <input type="password" className="form-control" value={form.confirm} onChange={set('confirm')} placeholder="••••••••" />
+              <div className="input-group">
+                <input type={showPassword ? "text" : "password"} className="form-control" value={form.confirm} onChange={set('confirm')} placeholder={editingId ? "Confirm new password" : "Confirm Password"} autoComplete="new-password" />
+                <button className="btn btn-outline-secondary bg-white text-muted" type="button" onClick={() => setShowPassword(!showPassword)}>
+                  <i className={`bi bi-eye${showPassword ? '-slash' : ''}`} />
+                </button>
+              </div>
             </Field>
           </div>
         </Section>
@@ -248,13 +366,7 @@ export default function UsersList() {
           <div className="row">
             <Field label="Role" col={6}>
               <select className="form-select" value={form.role} onChange={set('role')}>
-                {roles.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Reporting Manager" col={6}>
-              <select className="form-select" value={form.manager} onChange={set('manager')}>
-                <option value="">— None —</option>
-                {crm.users.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                {crm.roles.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
               </select>
             </Field>
             <Field label="Status" col={6}>
@@ -264,22 +376,6 @@ export default function UsersList() {
             </Field>
           </div>
         </Section>
-
-        <Section title="Personal Details" icon="bi-person-lines-fill">
-          <div className="row">
-            <Field label="Education / Degree" col={6}>
-              <input className="form-control" value={form.education} onChange={set('education')} placeholder="e.g. B.Tech Computer Science" />
-            </Field>
-            <Field label="Aadhar Number" col={6}>
-              <input className="form-control" value={form.aadhar} onChange={set('aadhar')} placeholder="XXXX XXXX XXXX" />
-            </Field>
-            <Field label="Residential Address" col={12}>
-              <textarea className="form-control" rows={2} value={form.address} onChange={set('address')} placeholder="Full address..." />
-            </Field>
-          </div>
-        </Section>
-
-
       </Drawer>
 
       <Drawer
@@ -290,79 +386,78 @@ export default function UsersList() {
         icon="bi-person-badge"
         width={500}
       >
-        {viewUser && (
-          <div className="p-3">
-            <div className="d-flex align-items-center gap-3 mb-4 pb-3 border-bottom">
-              <div className="avatar avatar-xl tone-blue">
-                {viewUser.name.charAt(0)}
+        {viewUser && (() => {
+          const comp = crm.adminCompanies?.find((c) => String(c.id) === String(viewUser.tenant_company_id)) || crm.companies?.find((c) => String(c.id) === String(viewUser.tenant_company_id));
+          const logo = viewUser.company_logo || comp?.logo_url;
+          const companyName = viewUser.company_name || comp?.name || '—';
+
+          return (
+            <div className="p-3">
+              <div className="d-flex align-items-center gap-3 mb-4 pb-3 border-bottom">
+                <div className="position-relative">
+                  {viewUser.profile_pic ? (
+                    <div className="avatar avatar-xl" style={{ width: 64, height: 64, borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--border)' }}>
+                      <img src={viewUser.profile_pic.startsWith('http') ? viewUser.profile_pic : `http://127.0.0.1:8000${viewUser.profile_pic}`} alt={viewUser.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                  ) : (
+                    <div className="avatar avatar-xl tone-blue">
+                      {viewUser.name.charAt(0)}
+                    </div>
+                  )}
+                  {logo && (
+                    <div style={{ position: 'absolute', bottom: -2, right: -2, width: 26, height: 26, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: 2 }}>
+                      <img src={logo.startsWith('http') ? logo : `http://127.0.0.1:8000${logo}`} alt="Company Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h4 className="mb-1">{viewUser.name}</h4>
+                  <div className="text-muted-c fs-13 mb-2">{viewUser.designation} · {viewUser.department}</div>
+                  <Badge tone={statusTone(viewUser.status)} dot>{viewUser.status}</Badge>
+                </div>
               </div>
-              <div>
-                <h4 className="mb-1">{viewUser.name}</h4>
-                <div className="text-muted-c fs-13 mb-2">{viewUser.designation} · {viewUser.department}</div>
-                <Badge tone={statusTone(viewUser.status)} dot>{viewUser.status}</Badge>
-              </div>
+
+              <Section title="Contact Info" icon="bi-envelope">
+                <div className="row g-3">
+                  <div className="col-12">
+                    <div className="fs-12 text-muted-c mb-1">Email Address</div>
+                    <div className="fw-6">{viewUser.email}</div>
+                  </div>
+                  <div className="col-12 mt-3">
+                    <div className="fs-12 text-muted-c mb-1">Mobile Number</div>
+                    <div className="fw-6 mono">{viewUser.mobile || '—'}</div>
+                  </div>
+                </div>
+              </Section>
+
+              <Section title="Employment Details" icon="bi-briefcase">
+                <div className="row g-3">
+                  <div className="col-12">
+                    <div className="fs-12 text-muted-c mb-1">Company</div>
+                    <div className="d-flex align-items-center gap-2 fw-6">
+                      {logo ? (
+                        <div style={{ width: 24, height: 24, borderRadius: 4, overflow: 'hidden', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 2 }}>
+                          <img src={logo.startsWith('http') ? logo : `http://127.0.0.1:8000${logo}`} alt="Company Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        </div>
+                      ) : (
+                        <i className="bi bi-building text-primary" />
+                      )}
+                      <span>{companyName}</span>
+                    </div>
+                  </div>
+                  <div className="col-6 mt-3">
+                    <div className="fs-12 text-muted-c mb-1">Employee ID</div>
+                    <div className="fw-6 mono">{viewUser.id}</div>
+                  </div>
+                  <div className="col-6 mt-3">
+                    <div className="fs-12 text-muted-c mb-1">Role</div>
+                    <div className="fw-6">{viewUser.role}</div>
+                  </div>
+                </div>
+              </Section>
             </div>
-
-            <Section title="Contact Info" icon="bi-envelope">
-              <div className="row g-3">
-                <div className="col-12">
-                  <div className="fs-12 text-muted-c mb-1">Email Address</div>
-                  <div className="fw-6">{viewUser.email}</div>
-                </div>
-                <div className="col-12 mt-3">
-                  <div className="fs-12 text-muted-c mb-1">Mobile Number</div>
-                  <div className="fw-6 mono">{viewUser.mobile || '—'}</div>
-                </div>
-              </div>
-            </Section>
-
-            <Section title="Personal Details" icon="bi-person-lines-fill">
-              <div className="row g-3">
-                <div className="col-6">
-                  <div className="fs-12 text-muted-c mb-1">Age</div>
-                  <div className="fw-6">{viewUser.age || '—'}</div>
-                </div>
-                <div className="col-6">
-                  <div className="fs-12 text-muted-c mb-1">Gender</div>
-                  <div className="fw-6">{viewUser.gender || '—'}</div>
-                </div>
-                <div className="col-12 mt-3">
-                  <div className="fs-12 text-muted-c mb-1">Education</div>
-                  <div className="fw-6">{viewUser.education || '—'}</div>
-                </div>
-                <div className="col-12 mt-3">
-                  <div className="fs-12 text-muted-c mb-1">Aadhar Number</div>
-                  <div className="fw-6 mono">{viewUser.aadhar || '—'}</div>
-                </div>
-                <div className="col-12 mt-3">
-                  <div className="fs-12 text-muted-c mb-1">Residential Address</div>
-                  <div className="fw-6">{viewUser.address || '—'}</div>
-                </div>
-              </div>
-            </Section>
-
-            <Section title="Employment Details" icon="bi-briefcase">
-              <div className="row g-3">
-                <div className="col-6">
-                  <div className="fs-12 text-muted-c mb-1">Employee ID</div>
-                  <div className="fw-6 mono">{viewUser.id}</div>
-                </div>
-                <div className="col-6">
-                  <div className="fs-12 text-muted-c mb-1">Branch</div>
-                  <div className="fw-6">{viewUser.branch}</div>
-                </div>
-                <div className="col-6 mt-3">
-                  <div className="fs-12 text-muted-c mb-1">Role</div>
-                  <div className="fw-6">{viewUser.role}</div>
-                </div>
-                <div className="col-6 mt-3">
-                  <div className="fs-12 text-muted-c mb-1">Reporting Manager</div>
-                  <div className="fw-6">{viewUser.manager || '—'}</div>
-                </div>
-              </div>
-            </Section>
-          </div>
-        )}
+          );
+        })()}
       </Drawer>
 
       <ConfirmDialog
@@ -371,8 +466,16 @@ export default function UsersList() {
         onConfirm={() => confirm && doDelete(confirm)}
         title="Delete User?"
         message={confirm ? `This will permanently remove ${confirm.name} (${confirm.id}).` : ''}
-        confirmLabel="Delete"
+        confirmLabel="Delete User"
         tone="danger"
+      />
+
+      <ImageCropperModal 
+        isOpen={isCropping}
+        onClose={() => setIsCropping(false)}
+        imageSrc={cropSrc}
+        onCropCompleteAction={handleProfilePicCrop}
+        aspectRatio={1}
       />
     </div>
   );

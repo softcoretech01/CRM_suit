@@ -9,6 +9,7 @@ import {
   CheckSquare,
   Mail,
   MessageCircle,
+  MessageSquare,
   PieChart,
   ShieldCheck
 } from 'lucide-react';
@@ -38,6 +39,7 @@ export const PORTALS = {
         items: [
           { to: '/companies', icon: Building2, label: 'Companies' },
           { to: '/contacts', icon: Users, label: 'Contacts' },
+          { to: '/products', icon: Zap, label: 'Products' },
           { to: '/leads', icon: Zap, label: 'Leads' },
           { to: '/opportunities', icon: LineChart, label: 'Opportunities' },
           // Note: Proposals & Pipeline paths remain active, but hidden from main UI nav to reduce clutter
@@ -53,8 +55,8 @@ export const PORTALS = {
       {
         group: 'Communication',
         items: [
-          { to: '/email-campaigns', icon: Mail, label: 'Email' },
           { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp' },
+          { to: '/sms', icon: MessageSquare, label: 'SMS' },
         ],
       },
       {
@@ -85,9 +87,9 @@ export const PORTALS = {
       {
         group: 'General',
         items: [
-          { to: '/masters/company', icon: 'bi-building-fill', label: 'Company Master' },
-          { to: '/masters/products', icon: 'bi-box-seam-fill', label: 'Product Master' },
-          { to: '/masters/industries', icon: 'bi-diagram-3-fill', label: 'Industry Master' },
+          { to: '/masters/product-categories', icon: 'bi-tags-fill', label: 'Product Category' },
+          { to: '/masters/company-types', icon: 'bi-buildings', label: 'Company Type' },
+          { to: '/masters/industries', icon: 'bi-diagram-3-fill', label: 'Industry' },
         ],
       },
       {
@@ -96,8 +98,7 @@ export const PORTALS = {
           { to: '/masters/lead-sources', icon: 'bi-signpost-split-fill', label: 'Lead Source' },
           { to: '/masters/campaigns', icon: 'bi-megaphone-fill', label: 'Campaign' },
           { to: '/masters/activity-types', icon: 'bi-list-check', label: 'Activity Type' },
-          { to: '/masters/lead-status', icon: 'bi-flag-fill', label: 'Lead Status' },
-          { to: '/masters/lead-temperature', icon: 'bi-thermometer-half', label: 'Lead Temperature' },
+          { to: '/masters/lead-statuses', icon: 'bi-flag-fill', label: 'Lead Status' },
           { to: '/masters/next-actions', icon: 'bi-arrow-right-circle-fill', label: 'Next Action' },
           { to: '/masters/priorities', icon: 'bi-exclamation-diamond-fill', label: 'Priority' },
         ],
@@ -132,6 +133,12 @@ export const PORTALS = {
           { to: '/permissions', icon: 'bi-ui-checks-grid', label: 'Permissions' },
         ],
       },
+      {
+        group: 'Tenants',
+        items: [
+          { to: '/admin/companies', icon: 'bi-building-fill', label: 'Companies' },
+        ],
+      },
     ],
   },
 };
@@ -142,9 +149,11 @@ export const PORTAL_ORDER = ['admin', 'masters', 'crm'];
 export function portalForPath(pathname) {
   if (pathname.startsWith('/masters')) return 'masters';
   if (
+    pathname.startsWith('/admin-dashboard') ||
     pathname.startsWith('/users') ||
     pathname.startsWith('/roles') ||
-    pathname.startsWith('/permissions')
+    pathname.startsWith('/permissions') ||
+    pathname.startsWith('/admin')
   )
     return 'admin';
   return 'crm';

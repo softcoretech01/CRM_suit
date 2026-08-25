@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import PageHeader from '../../components/common/PageHeader';
 import { Card } from '../../components/common/Ui';
 import { StatCard } from '../../components/common/PageParts';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Legend, Cell } from 'recharts';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../utils/api';
 
 const activityData = [
   { name: 'Mon', apiCalls: 4000, activeUsers: 240, errors: 24 },
@@ -15,23 +16,61 @@ const activityData = [
   { name: 'Sun', apiCalls: 3490, activeUsers: 430, errors: 18 },
 ];
 
-const roleData = [
-  { name: 'Administrator', count: 2, color: '#ef4444' },
-  { name: 'Sales Manager', count: 5, color: '#f59e0b' },
-  { name: 'Sales Executive', count: 18, color: '#3b82f6' },
-  { name: 'Marketing', count: 3, color: '#8b5cf6' },
-];
-
-const recentActivity = [
-  { id: 1, user: 'Rajesh Menon', action: 'Updated Role Permissions', target: 'Sales Executive', time: '10 mins ago', type: 'warning' },
-  { id: 2, user: 'System', action: 'Automated Backup Completed', target: 'Database', time: '1 hour ago', type: 'success' },
-  { id: 3, user: 'Anjali Sharma', action: 'Created New User', target: 'vivek.kumar@techspire.in', time: '3 hours ago', type: 'info' },
-  { id: 4, user: 'Rajesh Menon', action: 'Disabled User Account', target: 'old.employee@techspire.in', time: '5 hours ago', type: 'danger' },
-  { id: 5, user: 'System', action: 'API Rate Limit Warning', target: 'External Integration', time: '1 day ago', type: 'warning' },
-];
-
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const [stats, setStats] = useState({ total_users: 28, active_roles: 4, system_alerts: 2, avg_uptime: 99.98 });
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [roleData, setRoleData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await apiFetch('/admin/dashboard');
+        // Endpoint wraps the payload as { success, data: {...} }; unwrap it.
+        const data = res?.data ?? res;
+        if (data) setStats((s) => ({ ...s, ...data }));
+      } catch (err) {
+        console.error("Failed to fetch dashboard stats", err);
+      }
+    };
+    
+    const fetchLogs = async () => {
+      try {
+        const data = await apiFetch('/admin/audit-logs?page_size=5');
+        if (data && data.items) {
+          setRecentActivity(data.items.map(log => ({
+            id: log.id,
+            user: log.user_name || `User ${log.user_id}`,
+            action: log.action,
+            target: `${log.entity_type} ${log.entity_id}`,
+            time: new Date(log.created_at).toLocaleString(),
+            type: 'info'
+          })));
+        }
+      } catch (err) {
+        console.error("Failed to fetch audit logs", err);
+      }
+    };
+
+    const fetchRoles = async () => {
+      try {
+        const data = await apiFetch('/admin/roles');
+        if (data && data.data) {
+          const colors = ['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#10b981', '#6366f1'];
+          setRoleData(data.data.map((r, i) => ({
+            name: r.name,
+            count: r.users ?? r.user_count ?? 0,
+            color: colors[i % colors.length]
+          })));
+        }
+      } catch (err) {
+        console.error("Failed to fetch roles", err);
+      }
+    };
+
+    Promise.all([fetchStats(), fetchLogs(), fetchRoles()]).finally(() => setLoading(false));
+  }, []);
 
   return (
     <div className="page animate-up">
@@ -43,16 +82,16 @@ export default function AdminDashboard() {
 
       <div className="row g-4 mb-4">
         <div className="col-12 col-md-6 col-lg-3">
-          <StatCard label="Total Users" value="28" icon="bi-people" trend={12} trendText="vs last month" color="var(--primary)" />
+          <StatCard label="Total Users" value={loading ? "..." : stats.total_users} icon="bi-people" trend={12} trendText="vs last month" color="var(--primary)" />
         </div>
         <div className="col-12 col-md-6 col-lg-3">
-          <StatCard label="Active Roles" value="4" icon="bi-shield-check" color="var(--success)" />
+          <StatCard label="Active Roles" value={loading ? "..." : stats.active_roles} icon="bi-shield-check" color="var(--success)" />
         </div>
         <div className="col-12 col-md-6 col-lg-3">
-          <StatCard label="System Alerts" value="2" icon="bi-exclamation-triangle" trend={-1} trendText="vs last week" color="var(--warning)" />
+          <StatCard label="System Alerts" value={loading ? "..." : stats.system_alerts} icon="bi-exclamation-triangle" trend={-1} trendText="vs last week" color="var(--warning)" />
         </div>
         <div className="col-12 col-md-6 col-lg-3">
-          <StatCard label="Avg. Uptime" value="99.98%" icon="bi-activity" color="var(--info)" />
+          <StatCard label="Avg. Uptime" value={loading ? "..." : `${stats.avg_uptime}%`} icon="bi-activity" color="var(--info)" />
         </div>
       </div>
 

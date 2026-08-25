@@ -36,8 +36,9 @@ export default function ContactDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState(null);
 
-  const contact = crm.contacts.find((c) => c.id === id);
-  const company = crm.companies.find((c) => c.id === contact?.companyId);
+  const contact = crm.contacts.find((c) => String(c.id) === String(id));
+  const companyId = contact?.companyId || contact?.company_id;
+  const company = crm.companies.find((c) => c.id === companyId);
 
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 450);
@@ -100,9 +101,6 @@ export default function ContactDetail() {
               </div>
             </div>
             <div className="d-flex align-items-center gap-2 flex-wrap">
-              <button className="btn btn-light" onClick={() => toast.info('Opening dialer…', `Calling ${contact.name} on ${contact.mobile || 'mobile'}.`)}><i className="bi bi-telephone" /> Log Call</button>
-              <button className="btn btn-light" onClick={() => toast.info('Opening email…', `Composing email to ${contact.email || contact.name}.`)}><i className="bi bi-envelope" /> Send Email</button>
-              {contact.whatsapp && <button className="btn btn-light" onClick={() => toast.info('Opening WhatsApp…', `Chat with ${contact.name}.`)}><i className="bi bi-whatsapp" /> WhatsApp</button>}
               <button className="btn btn-primary" onClick={openEdit}><i className="bi bi-pencil" /> Edit</button>
             </div>
           </div>
@@ -134,11 +132,7 @@ export default function ContactDetail() {
             <ReadRow label="LinkedIn">{contact.linkedin ? <a href={`https://${contact.linkedin.replace(/^https?:\/\//, '')}`} target="_blank" rel="noreferrer">{contact.linkedin}</a> : '—'}</ReadRow>
           </Section>
 
-          <Section title="Preferences & Role" icon="bi-diagram-3">
-            <CheckRow label="Decision Maker" on={contact.decisionMaker} />
-            <CheckRow label="Influencer" on={contact.influencer} />
-            <CheckRow label="Primary Contact" on={contact.primary} />
-          </Section>
+
         </div>
       </div>
 
@@ -176,6 +170,15 @@ export default function ContactDetail() {
                 <Field label="Department" col={6}>
                   <input className="form-control" value={form.department} onChange={set('department')} />
                 </Field>
+                <Field label="Company" col={12}>
+                  <select className="form-select" value={form.companyId || form.company_id || ''} onChange={(e) => {
+                    const c = crm.companies.find(comp => comp.id === e.target.value);
+                    setForm((f) => ({ ...f, companyId: e.target.value, company: c ? c.name : '' }));
+                  }}>
+                    <option value="">Select Company</option>
+                    {crm.companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </Field>
               </div>
             </Section>
             <Section title="Communication" icon="bi-chat-dots">
@@ -192,22 +195,6 @@ export default function ContactDetail() {
                 <Field label="LinkedIn" col={12}>
                   <input className="form-control" value={form.linkedin} onChange={set('linkedin')} />
                 </Field>
-              </div>
-            </Section>
-            <Section title="Relationship" icon="bi-diagram-3">
-              <div className="d-flex flex-column gap-2">
-                <label className="d-flex align-items-center gap-2" style={{ cursor: 'pointer' }}>
-                  <input type="checkbox" className="form-check-input" checked={!!form.decisionMaker} onChange={toggle('decisionMaker')} />
-                  <span className="fs-13">Decision Maker</span>
-                </label>
-                <label className="d-flex align-items-center gap-2" style={{ cursor: 'pointer' }}>
-                  <input type="checkbox" className="form-check-input" checked={!!form.influencer} onChange={toggle('influencer')} />
-                  <span className="fs-13">Influencer</span>
-                </label>
-                <label className="d-flex align-items-center gap-2" style={{ cursor: 'pointer' }}>
-                  <input type="checkbox" className="form-check-input" checked={!!form.primary} onChange={toggle('primary')} />
-                  <span className="fs-13">Primary Contact</span>
-                </label>
               </div>
             </Section>
           </>

@@ -5,21 +5,39 @@ import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { PORTALS } from '../../config/portals';
 
-const clone = (o) => JSON.parse(JSON.stringify(o));
+const clone = (o) => o ? JSON.parse(JSON.stringify(o)) : null;
+
+const blankMatrix = () => {
+  const m = {};
+  Object.values(PORTALS).forEach(p => {
+    m[p.id] = {};
+    p.nav.forEach(g => {
+      g.items.forEach(i => m[p.id][i.label] = false);
+    });
+  });
+  return m;
+};
 
 export default function Permissions() {
   const { roles, updateRole } = useCrm();
   const toast = useToast();
 
-  const [selectedId, setSelectedId] = useState(roles[0]?.id || null);
-  const [matrix, setMatrix] = useState(() => clone(roles[0]?.matrix || {}));
+  const [selectedId, setSelectedId] = useState(null);
+  const [matrix, setMatrix] = useState(blankMatrix());
   const [dirty, setDirty] = useState(false);
 
   const selected = roles.find((r) => r.id === selectedId);
 
+  // Auto-select first role when roles load from API
+  useEffect(() => {
+    if (roles.length > 0 && !selectedId) {
+      setSelectedId(roles[0].id);
+    }
+  }, [roles, selectedId]);
+
   useEffect(() => {
     if (selected) {
-      setMatrix(clone(selected.matrix));
+      setMatrix(clone(selected.matrix) || blankMatrix());
       setDirty(false);
     }
   }, [selectedId, selected]);
@@ -65,11 +83,15 @@ export default function Permissions() {
     setDirty(true);
   };
 
-  const savePermissions = () => {
+  const savePermissions = async () => {
     if (!selected) return;
-    updateRole(selectedId, { matrix });
-    setDirty(false);
-    toast.success('Permissions saved', `Access matrix for ${selected.name} was updated.`);
+    try {
+      await updateRole(selectedId, { matrix });
+      setDirty(false);
+      toast.success('Permissions saved', `Access matrix for ${selected.name} was updated.`);
+    } catch (e) {
+      toast.error('Save failed', 'Could not save the permission matrix.');
+    }
   };
 
   return (
@@ -176,7 +198,9 @@ export default function Permissions() {
                                     }}
                                   >
                                     <div className="d-flex align-items-center gap-2">
-                                      <i className={`bi ${item.icon} text-secondary-c fs-14`} />
+                                      {typeof item.icon === 'function'
+                                        ? <item.icon size={15} className="text-secondary-c" />
+                                        : <i className={`bi ${item.icon} text-secondary-c fs-14`} />}
                                       <span className="fs-14 mb-0">{item.label}</span>
                                     </div>
                                     <div className="form-check form-switch m-0" style={{ pointerEvents: 'none' }}>

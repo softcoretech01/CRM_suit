@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import GlobalSearch from './GlobalSearch';
 import { Avatar } from '../common/Ui';
-import { notifications } from '../../data/mockData';
 import { useAuth } from '../../context/AuthContext';
 import { usePortal } from '../../context/PortalContext';
 import { useCrm } from '../../context/CrmContext';
@@ -10,7 +9,7 @@ import { getTodayISO } from '../../utils/format';
 
 const TITLES = {
   dashboard: 'Dashboard', leads: 'Leads', companies: 'Companies', contacts: 'Contacts',
-  opportunities: 'Opportunities', quotations: 'Quotations', proposals: 'Proposals', documents: 'Documents',
+  opportunities: 'Opportunities', proposals: 'Proposals', documents: 'Documents',
   'email-campaigns': 'Email Campaigns', 'email-templates': 'Email Templates',
   whatsapp: 'WhatsApp', 'whatsapp-campaigns': 'WhatsApp Campaigns',
   'marketing-automation': 'Marketing Automation', approvals: 'Approvals',
@@ -46,7 +45,13 @@ export default function Topbar({ onToggleSidebar, onToggleMobile }) {
   const module = segments[0] ? crumbLabel(segments[0]) : 'Dashboard';
 
   const TODAY = getTodayISO();
-  const pendingFollowups = (crm?.followUps || []).filter((f) => f.status !== 'Completed' && f.date <= TODAY);
+  const fuDay = (f) => { const v = f.next_followup_date || f.followup_date; return v ? String(v).replace('T', ' ').slice(0, 10) : ''; };
+  const fuName = (f) => f.lead_name || f.opportunity_name || f.company_name || 'Follow-up';
+  const fuSubject = (f) => f.activity || f.followup_type || 'Follow-up';
+  // Notifications = pending follow-ups that are due now — today or overdue (not future ones), soonest first.
+  const pendingFollowups = (crm?.followUps || [])
+    .filter((f) => f.status !== 'Completed' && f.status !== 'Done' && fuDay(f) && fuDay(f) <= TODAY)
+    .sort((a, b) => (fuDay(a) < fuDay(b) ? -1 : 1));
   const notifCount = pendingFollowups.length;
 
   const quickItems = [
@@ -55,7 +60,6 @@ export default function Topbar({ onToggleSidebar, onToggleMobile }) {
     { icon: 'bi-person-plus', label: 'New Contact', to: '/contacts?new=1' },
     { icon: 'bi-graph-up-arrow', label: 'New Opportunity', to: '/opportunities?new=1' },
     { divider: true },
-    { icon: 'bi-receipt', label: 'New Quotation', to: '/quotations/new' },
     { icon: 'bi-file-earmark-check', label: 'New Proposal', to: '/proposals/new' },
     { icon: 'bi-cloud-arrow-up', label: 'Upload Document', to: '/documents?upload=1' },
     { divider: true },
@@ -79,7 +83,7 @@ export default function Topbar({ onToggleSidebar, onToggleMobile }) {
           <i className="bi bi-list" />
         </button>
         <div className="crumb desktop-only">
-          <span className="crumb-portal"><i className={`bi ${portal.icon}`} /> {portal.short}</span>
+          <span className="crumb-portal"><i className={`bi ${portal.icon}`} /> {currentUser?.tenant_company_name || portal.short}</span>
           <i className="bi bi-chevron-right" />
           <span className="cur">{module}</span>
         </div>
@@ -111,28 +115,31 @@ export default function Topbar({ onToggleSidebar, onToggleMobile }) {
                 </div>
                 <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
                   {pendingFollowups.length > 0 ? pendingFollowups.map(f => (
-                    <div key={f.id} className="p-3 border-bottom hover-bg-light cursor-pointer" onClick={() => { navigate('/activities'); notif.setOpen(false); }}>
-                      <div className="fw-6 fs-13 mb-1 text-truncate">{f.subject}</div>
+                    <div key={f.id} className="p-3 border-bottom hover-bg-light cursor-pointer" onClick={() => { navigate('/activities/followups'); notif.setOpen(false); }}>
+                      <div className="d-flex align-items-center gap-2 mb-1">
+                        <i className="bi bi-clock-history text-primary-c" />
+                        <span className="fw-6 fs-13 text-truncate">{fuName(f)}</span>
+                      </div>
                       <div className="fs-12 text-muted-c d-flex justify-content-between">
-                        <span className="text-truncate" style={{ maxWidth: '60%' }}>{f.company || '—'}</span>
-                        <span className={f.date < TODAY ? 'text-danger fw-6' : 'text-primary'}>
-                          {f.date < TODAY ? 'Overdue' : 'Due Today'}
+                        <span className="text-truncate" style={{ maxWidth: '58%' }}>{fuSubject(f)}</span>
+                        <span className={fuDay(f) < TODAY ? 'text-danger fw-6' : fuDay(f) === TODAY ? 'text-primary fw-6' : 'text-secondary-c fw-6'}>
+                          {fuDay(f) < TODAY ? 'Overdue' : fuDay(f) === TODAY ? 'Due Today' : fuDay(f)}
                         </span>
                       </div>
                     </div>
                   )) : (
-                    <div className="p-4 text-center text-muted-c fs-13">You're all caught up!</div>
+                    <div className="p-4 text-center text-muted-c fs-13">You're all caught up! 🎉</div>
                   )}
                 </div>
                 <div className="p-2 border-top text-center bg-light">
-                  <button className="btn btn-link btn-sm text-decoration-none w-100" onClick={() => { navigate('/activities'); notif.setOpen(false); }}>View all activities</button>
+                  <button className="btn btn-link btn-sm text-decoration-none w-100" onClick={() => { navigate('/activities/followups'); notif.setOpen(false); }}>View all follow-ups</button>
                 </div>
               </div>
             )}
           </div>
         )}
-        <div className="user-chip" style={{ cursor: 'pointer' }}>
-          <Avatar name={currentUser.name} size="md" color={currentUser.avatarColor} />
+        <div className="user-chip ms-2" style={{ cursor: 'pointer' }}>
+          <Avatar name={currentUser.name} src={currentUser.profile_pic} size="md" color={currentUser.avatarColor} />
           <div className="desktop-only">
             <div className="u-name">{currentUser.name}</div>
             <div className="u-role">{currentUser.role}</div>

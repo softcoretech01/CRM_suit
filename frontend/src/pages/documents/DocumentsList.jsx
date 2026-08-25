@@ -33,13 +33,13 @@ export default function DocumentsList() {
 
   const columns = [
     { key: 'icon', label: '', width: '50px', render: r => <i className={`bi bi-file-earmark-${r.fileType === 'pdf' ? 'pdf text-danger-c' : 'text text-primary-c'} fs-5`} /> },
-    { key: 'number', label: 'Doc #', render: r => <span className="mono fw-6 text-muted-c">{r.number}</span> },
+    { key: 'sno', label: 'S.No', width: '70px', render: (_, idx) => <span className="text-secondary-c">{idx}</span> },
     { key: 'name', label: 'Document Name', sortable: true, render: r => <span className="fw-6">{r.name}</span> },
     { key: 'category', label: 'Category', render: r => <Badge tone="tone-blue">{r.category}</Badge> },
     { key: 'company', label: 'Company', sortable: true, render: r => <div className="text-truncate" style={{ maxWidth: 150 }}>{r.company}</div> },
     { key: 'version', label: 'Version', render: r => <span className="badge-pill tone-gray">{r.version}</span> },
     { key: 'uploadDate', label: 'Uploaded', sortable: true },
-    { key: 'uploadedBy', label: 'Uploaded By', render: r => <UserCell name={r.uploadedBy} /> },
+    { key: 'uploadedBy', label: 'Uploaded By', render: r => <UserCell name={r.uploadedBy} hideAvatar /> },
     { key: 'actions', label: 'Action', width: '100px', render: r => (
       <div className="d-flex align-items-center gap-1" onClick={e => e.stopPropagation()}>
         <ActionIconButton type="view" onClick={() => setPreviewDoc(r)} />

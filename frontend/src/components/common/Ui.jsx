@@ -12,12 +12,25 @@ export function Badge({ tone = 'tone-gray', children, dot = false, icon }) {
 }
 
 // ---------- Avatar ----------
-export function Avatar({ name = '', size = 'md', color }) {
-  if (!name) return null;
+export function Avatar({ name = '', size = 'md', color, src }) {
+  if (!name && !src) return null;
   const dims = { sm: 24, md: 36, lg: 48 }[size] || 36;
   const fs = { sm: 11, md: 14, lg: 18 }[size] || 14;
-  const bg = color || colorFor(name);
+  const bg = color || colorFor(name || '');
   
+  if (src) {
+    const imgUrl = src.startsWith('http') ? src : `http://127.0.0.1:8000${src}`;
+    return (
+      <img 
+        src={imgUrl} 
+        alt={name} 
+        className="rounded-circle flex-shrink-0"
+        style={{ width: dims, height: dims, objectFit: 'cover' }}
+        title={name}
+      />
+    );
+  }
+
   return (
     <div 
       className="d-flex align-items-center justify-content-center text-white fw-6 rounded-circle flex-shrink-0"
@@ -29,11 +42,11 @@ export function Avatar({ name = '', size = 'md', color }) {
   );
 }
 
-export function UserCell({ name, sub, color, size = 'sm' }) {
+export function UserCell({ name, sub, color, size = 'sm', hideAvatar }) {
   if (!name || name === '—') return <span className="text-muted-c">—</span>;
   return (
     <div className="d-flex align-items-center gap-2">
-      <Avatar name={name} size={size} color={color} />
+      {!hideAvatar && <Avatar name={name} size={size} color={color} />}
       <div style={{ minWidth: 0 }}>
         <div className="fw-6" style={{ lineHeight: 1.2 }}>{name}</div>
         {sub && <div className="fs-12 text-muted-c text-truncate">{sub}</div>}

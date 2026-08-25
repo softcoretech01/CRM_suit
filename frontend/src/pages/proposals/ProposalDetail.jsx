@@ -13,12 +13,12 @@ export default function ProposalDetail() {
   const toast = useToast();
   
   const [tab, setTab] = useState('Preview');
-  const proposal = proposals.find(p => p.id === id);
+  const proposal = proposals.find(p => String(p.id) === String(id));
   
   if (!proposal) return <NotFound />;
 
   const handleSend = () => {
-    setProposals(prev => prev.map(p => p.id === id ? { ...p, status: 'Sent' } : p));
+    setProposals(prev => prev.map(p => String(p.id) === String(id) ? { ...p, status: 'Sent' } : p));
     
     // Simulate creating a document entry when proposal is generated/sent
     if (addDocument) {
@@ -73,7 +73,7 @@ export default function ProposalDetail() {
             {proposal.status === 'Draft' && <button className="btn btn-primary" onClick={handleSend}><i className="bi bi-send" /> Send to Customer</button>}
             
             {(proposal.status === 'Sent') && <button className="btn btn-success" onClick={() => {
-              setProposals(prev => prev.map(p => p.id === id ? { ...p, status: 'Accepted' } : p));
+              setProposals(prev => prev.map(p => String(p.id) === String(id) ? { ...p, status: 'Accepted' } : p));
               toast.success('Accepted', 'Proposal accepted by customer');
             }}><i className="bi bi-check-lg" /> Mark as Accepted</button>}
           </div>
