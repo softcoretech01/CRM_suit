@@ -1,4 +1,5 @@
 import { initials, colorFor } from '../../utils/format';
+import { BACKEND_URL } from '../../utils/api';
 
 // ---------- Badge ----------
 export function Badge({ tone = 'tone-gray', children, dot = false, icon }) {
@@ -19,7 +20,7 @@ export function Avatar({ name = '', size = 'md', color, src }) {
   const bg = color || colorFor(name || '');
   
   if (src) {
-    const imgUrl = src.startsWith('http') ? src : `http://127.0.0.1:8000${src}`;
+    const imgUrl = src.startsWith('http') ? src : `${BACKEND_URL}${src}`;
     return (
       <img 
         src={imgUrl} 

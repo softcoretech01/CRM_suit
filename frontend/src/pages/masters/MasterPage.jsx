@@ -10,7 +10,7 @@ import GeographySelect from '../../components/common/GeographySelect';
 import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { statusTone } from '../../utils/format';
-import { apiFetch } from '../../utils/api';
+import { apiFetch, BACKEND_URL, API_BASE_URL } from '../../utils/api';
 
 // ---------- option helpers ----------
 const TONE_OPTIONS = ['tone-blue', 'tone-indigo', 'tone-green', 'tone-amber', 'tone-red', 'tone-teal', 'tone-gray', 'tone-purple', 'tone-pink'];
@@ -365,7 +365,7 @@ function LogoUploadField({ value, onChange }) {
     formData.append('file', croppedFile);
     try {
       const token = sessionStorage.getItem('token');
-      const res = await fetch('http://127.0.0.1:8000/api/admin/companies/upload-logo', {
+      const res = await fetch(`${API_BASE_URL}/admin/companies/upload-logo`, {
         method: 'POST',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,
@@ -386,7 +386,7 @@ function LogoUploadField({ value, onChange }) {
   return (
     <div className="d-flex align-items-center gap-3">
       <div className="avatar avatar-lg bg-light border overflow-hidden">
-        {value ? <img src={`http://127.0.0.1:8000${value}`} alt="Logo" style={{width: '100%', height: '100%', objectFit: 'contain'}} /> : <i className="bi bi-building fs-4 text-muted" />}
+        {value ? <img src={`${BACKEND_URL}${value}`} alt="Logo" style={{width: '100%', height: '100%', objectFit: 'contain'}} /> : <i className="bi bi-building fs-4 text-muted" />}
       </div>
       <div>
         <input type="file" ref={logoInputRef} className="d-none" accept="image/*" onChange={handleLogoSelect} />

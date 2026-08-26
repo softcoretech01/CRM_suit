@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCrm } from '../../context/CrmContext';
 import { PORTAL_ORDER } from '../../config/portals';
 import { Avatar } from '../../components/common/Ui';
+import { BACKEND_URL, API_BASE_URL } from '../../utils/api';
 
 export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
     try {
       const token = sessionStorage.getItem('token');
       if (token) {
-        await fetch('http://127.0.0.1:8000/api/auth/logout', {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -54,7 +55,7 @@ export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
       <div className="sidebar-brand">
         {myCompany?.logo_url ? (
-          <img src={`http://127.0.0.1:8000${myCompany.logo_url}`} alt={myCompany.name} style={{ maxWidth: '140px', maxHeight: '46px', objectFit: 'contain', marginRight: '8px' }} />
+          <img src={`${BACKEND_URL}${myCompany.logo_url}`} alt={myCompany.name} style={{ maxWidth: '140px', maxHeight: '46px', objectFit: 'contain', marginRight: '8px' }} />
         ) : (
           <div className="brand-logo" style={{ background: portal.gradient }}>{myCompany ? myCompany.name.charAt(0).toUpperCase() : 'T'}</div>
         )}
