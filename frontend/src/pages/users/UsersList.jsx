@@ -9,7 +9,6 @@ import { MiniStat } from '../../components/common/PageParts';
 import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { formatDate, statusTone, colorFor } from '../../utils/format';
-import { BACKEND_URL, API_BASE_URL } from '../../utils/api';
 
 const STATUS_OPTIONS = ['Active', 'Inactive'];
 
@@ -58,7 +57,7 @@ export default function UsersList() {
     formData.append('file', croppedFile);
     try {
       const token = sessionStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/admin/users/upload-profile-pic`, {
+      const res = await fetch('/api/admin/users/upload-profile-pic', {
         method: 'POST',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,
@@ -181,7 +180,7 @@ export default function UsersList() {
         return (
           <div className="d-flex align-items-center gap-2">
             {pic ? (
-              <img src={pic.startsWith('http') ? pic : `${BACKEND_URL}${pic}`} alt={r.name} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} />
+              <img src={pic.startsWith('http') ? pic : `${pic}`} alt={r.name} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} />
             ) : (
               <div className="avatar avatar-sm tone-blue" style={{ width: 28, height: 28, fontSize: 12, borderRadius: '50%' }}>
                 {r.name?.charAt(0)}
@@ -201,7 +200,7 @@ export default function UsersList() {
         return (
           <div className="d-flex align-items-center gap-2">
             {logo ? (
-              <img src={logo.startsWith('http') ? logo : `${BACKEND_URL}${logo}`} alt="Logo" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
+              <img src={logo.startsWith('http') ? logo : `${logo}`} alt="Logo" style={{ width: 20, height: 20, objectFit: 'contain', borderRadius: 4 }} />
             ) : (
               <i className="bi bi-building text-teal" />
             )}
@@ -284,7 +283,7 @@ export default function UsersList() {
             <div className="avatar avatar-xl tone-blue position-relative" style={{ width: 60, height: 60, borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--border)', flexShrink: 0 }}>
               {(form.profile_pic || form.profilePic) ? (
                 <img
-                  src={(form.profile_pic || form.profilePic).startsWith('http') ? (form.profile_pic || form.profilePic) : `${BACKEND_URL}${form.profile_pic || form.profilePic}`}
+                  src={(form.profile_pic || form.profilePic).startsWith('http') ? (form.profile_pic || form.profilePic) : `${form.profile_pic || form.profilePic}`}
                   alt="Profile"
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
@@ -398,7 +397,7 @@ export default function UsersList() {
                 <div className="position-relative">
                   {viewUser.profile_pic ? (
                     <div className="avatar avatar-xl" style={{ width: 64, height: 64, borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--border)' }}>
-                      <img src={viewUser.profile_pic.startsWith('http') ? viewUser.profile_pic : `${BACKEND_URL}${viewUser.profile_pic}`} alt={viewUser.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={viewUser.profile_pic.startsWith('http') ? viewUser.profile_pic : `${viewUser.profile_pic}`} alt={viewUser.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
                   ) : (
                     <div className="avatar avatar-xl tone-blue">
@@ -407,7 +406,7 @@ export default function UsersList() {
                   )}
                   {logo && (
                     <div style={{ position: 'absolute', bottom: -2, right: -2, width: 26, height: 26, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: 2 }}>
-                      <img src={logo.startsWith('http') ? logo : `${BACKEND_URL}${logo}`} alt="Company Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      <img src={logo.startsWith('http') ? logo : `${logo}`} alt="Company Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                     </div>
                   )}
                 </div>
@@ -438,7 +437,7 @@ export default function UsersList() {
                     <div className="d-flex align-items-center gap-2 fw-6">
                       {logo ? (
                         <div style={{ width: 24, height: 24, borderRadius: 4, overflow: 'hidden', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 2 }}>
-                          <img src={logo.startsWith('http') ? logo : `${BACKEND_URL}${logo}`} alt="Company Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                          <img src={logo.startsWith('http') ? logo : `${logo}`} alt="Company Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                         </div>
                       ) : (
                         <i className="bi bi-building text-primary" />

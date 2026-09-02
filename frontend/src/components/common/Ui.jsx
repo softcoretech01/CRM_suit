@@ -1,5 +1,5 @@
+import { useState } from 'react';
 import { initials, colorFor } from '../../utils/format';
-import { BACKEND_URL } from '../../utils/api';
 
 // ---------- Badge ----------
 export function Badge({ tone = 'tone-gray', children, dot = false, icon }) {
@@ -19,8 +19,10 @@ export function Avatar({ name = '', size = 'md', color, src }) {
   const fs = { sm: 11, md: 14, lg: 18 }[size] || 14;
   const bg = color || colorFor(name || '');
   
-  if (src) {
-    const imgUrl = src.startsWith('http') ? src : `${BACKEND_URL}${src}`;
+  const [imgError, setImgError] = useState(false);
+
+  if (src && !imgError) {
+    const imgUrl = src.startsWith('http') ? src : `${src}`;
     return (
       <img 
         src={imgUrl} 
@@ -28,6 +30,7 @@ export function Avatar({ name = '', size = 'md', color, src }) {
         className="rounded-circle flex-shrink-0"
         style={{ width: dims, height: dims, objectFit: 'cover' }}
         title={name}
+        onError={() => setImgError(true)}
       />
     );
   }

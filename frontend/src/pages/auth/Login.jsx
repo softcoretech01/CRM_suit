@@ -6,7 +6,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useCrm } from '../../context/CrmContext';
 import { PORTALS } from '../../config/portals';
 import { allowedPortalsFor, defaultMatrixFor } from '../../data/permissionDefaults';
-import { API_BASE_URL } from '../../utils/api';
 import './auth.css';
 
 // Login-card portal visuals (ordered Admin · Masters · CRM to match the design)
@@ -167,7 +166,7 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ username, password })

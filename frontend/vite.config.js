@@ -6,6 +6,17 @@ export default defineConfig({
   server: {
     port: 5173,
     open: false,
+    host: '0.0.0.0',
+    proxy: {
+      '/api': {
+        target: 'http://backend:8000',
+        changeOrigin: tr
+      },
+      '/uploads': {
+        target: 'http://backend:8000',
+        changeOrigin: true,
+      }
+    }
   },
   build: {
     rollupOptions: {

@@ -5,7 +5,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useCrm } from '../../context/CrmContext';
 import { PORTAL_ORDER } from '../../config/portals';
 import { Avatar } from '../../components/common/Ui';
-import { BACKEND_URL, API_BASE_URL } from '../../utils/api';
 
 export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
   const navigate = useNavigate();
@@ -13,6 +12,7 @@ export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
   const { currentUser } = useAuth();
   const crm = useCrm();
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const switchRef = useRef(null);
 
   const myCompany = currentUser?.tenant_company_id ? crm.adminCompanies?.find(c => String(c.id) === String(currentUser.tenant_company_id)) : null;
@@ -35,7 +35,7 @@ export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
     try {
       const token = sessionStorage.getItem('token');
       if (token) {
-        await fetch(`${API_BASE_URL}/auth/logout`, {
+        await fetch('/api/auth/logout', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -54,8 +54,13 @@ export default function Sidebar({ collapsed, mobileOpen, onNavigate }) {
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
       <div className="sidebar-brand">
-        {myCompany?.logo_url ? (
-          <img src={`${BACKEND_URL}${myCompany.logo_url}`} alt={myCompany.name} style={{ maxWidth: '140px', maxHeight: '46px', objectFit: 'contain', marginRight: '8px' }} />
+        {myCompany?.logo_url && !logoError ? (
+          <img 
+            src={`${myCompany.logo_url}`} 
+            alt={myCompany.name} 
+            style={{ maxWidth: '140px', maxHeight: '46px', objectFit: 'contain', marginRight: '8px' }} 
+            onError={() => setLogoError(true)}
+          />
         ) : (
           <div className="brand-logo" style={{ background: portal.gradient }}>{myCompany ? myCompany.name.charAt(0).toUpperCase() : 'T'}</div>
         )}

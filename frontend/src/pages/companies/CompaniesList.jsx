@@ -11,7 +11,6 @@ import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { formatINR, statusTone } from '../../utils/format';
 import { salespeople } from '../../data/mockData';
-import { API_BASE_URL } from '../../utils/api';
 import GeographySelect from '../../components/common/GeographySelect';
 
 const STATUS_OPTIONS = ['Active', 'Prospect', 'Inactive', 'Paused'];
@@ -77,7 +76,7 @@ export default function CompaniesList() {
     formData.append('file', croppedFile);
     try {
       const token = sessionStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/masters/companies/upload-logo`, {
+      const res = await fetch('/api/masters/companies/upload-logo', {
         method: 'POST',
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,
