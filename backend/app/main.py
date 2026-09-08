@@ -66,9 +66,11 @@ app = FastAPI(
 
 import os
 from pathlib import Path
-media_root = Path(settings.MEDIA_ROOT)
+# Fall back to sensible defaults so a stale/mismatched Settings can't crash startup.
+media_root = Path(getattr(settings, "MEDIA_ROOT", "uploads"))
+media_url = getattr(settings, "MEDIA_URL", "/uploads")
 media_root.mkdir(parents=True, exist_ok=True)
-app.mount(settings.MEDIA_URL, StaticFiles(directory=str(media_root)), name="uploads")
+app.mount(media_url, StaticFiles(directory=str(media_root)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
