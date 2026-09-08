@@ -65,9 +65,10 @@ app = FastAPI(
 )
 
 import os
-if not os.path.exists("uploads"):
-    os.makedirs("uploads")
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+from pathlib import Path
+media_root = Path(settings.MEDIA_ROOT)
+media_root.mkdir(parents=True, exist_ok=True)
+app.mount(settings.MEDIA_URL, StaticFiles(directory=str(media_root)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,

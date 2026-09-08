@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     
     CORS_ORIGINS: List[str] = ["*"]
     
+    MEDIA_ROOT: str = "uploads"
+    MEDIA_URL: str = "/uploads"
+    
     model_config = SettingsConfigDict(env_file=".env")
 
 settings = Settings()

@@ -7,10 +7,10 @@ import { Drawer, ConfirmDialog } from '../../components/common/Overlay';
 import ActionIconButton from '../../components/common/ActionIconButton';
 import { ImageCropperModal } from '../../components/common/ImageCropperModal';
 import GeographySelect from '../../components/common/GeographySelect';
+import { apiFetch, getMediaUrl } from '../../utils/api';
 import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { statusTone } from '../../utils/format';
-import { apiFetch } from '../../utils/api';
 
 // ---------- option helpers ----------
 const TONE_OPTIONS = ['tone-blue', 'tone-indigo', 'tone-green', 'tone-amber', 'tone-red', 'tone-teal', 'tone-gray', 'tone-purple', 'tone-pink'];
@@ -391,7 +391,7 @@ function LogoUploadField({ value, onChange }) {
   return (
     <div className="d-flex align-items-center gap-3">
       <div className="avatar avatar-lg bg-light border overflow-hidden">
-        {value ? <img src={`${value}`} alt="Logo" style={{width: '100%', height: '100%', objectFit: 'contain'}} /> : <i className="bi bi-building fs-4 text-muted" />}
+        {value ? <img src={getMediaUrl(value)} alt="Logo" style={{width: '100%', height: '100%', objectFit: 'contain'}} /> : <i className="bi bi-building fs-4 text-muted" />}
       </div>
       <div>
         <input type="file" ref={logoInputRef} className="d-none" accept="image/*" onChange={handleLogoSelect} />

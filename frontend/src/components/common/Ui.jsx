@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { initials, colorFor } from '../../utils/format';
+import { BACKEND_URL, getMediaUrl } from '../../utils/api';
 
 // ---------- Badge ----------
 export function Badge({ tone = 'tone-gray', children, dot = false, icon }) {
@@ -22,7 +23,7 @@ export function Avatar({ name = '', size = 'md', color, src }) {
   const [imgError, setImgError] = useState(false);
 
   if (src && !imgError) {
-    const imgUrl = src.startsWith('http') ? src : `${src}`;
+    const imgUrl = getMediaUrl(src);
     return (
       <img 
         src={imgUrl} 

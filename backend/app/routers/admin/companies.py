@@ -10,6 +10,7 @@ from pathlib import Path
 from aiomysql.connection import Connection
 from app.core.database import get_admin_db
 from app.core.dependencies import get_current_user
+from app.core.config import settings
 from app.repositories import admin_repo
 from app.schemas.admin.company import CompanyCreate, CompanyUpdate, Company
 
@@ -68,7 +69,7 @@ async def delete_company(
 
 @router.post("/upload-logo", summary="Upload a company logo")
 async def upload_company_logo(file: UploadFile = File(...)):
-    UPLOAD_DIR = Path("uploads/logos")
+    UPLOAD_DIR = Path(settings.MEDIA_ROOT) / "logos"
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     
     file_extension = file.filename.split(".")[-1]
@@ -79,4 +80,4 @@ async def upload_company_logo(file: UploadFile = File(...)):
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    return {"success": True, "logo_url": f"/uploads/logos/{new_filename}"}
+    return {"success": True, "logo_url": f"{settings.MEDIA_URL.rstrip('/')}/logos/{new_filename}"}

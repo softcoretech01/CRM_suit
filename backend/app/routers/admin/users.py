@@ -10,6 +10,7 @@ import uuid
 from aiomysql.connection import Connection
 from app.core.database import get_admin_db
 from app.core.dependencies import get_current_user
+from app.core.config import settings
 from app.repositories import admin_repo
 from app.schemas.admin.user import UserCreate, UserUpdate, UserResponse
 from app.core.security import get_password_hash
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/users", tags=["Admin — Users"])
 
 @router.post("/upload-profile-pic", summary="Upload an employee profile picture")
 async def upload_user_profile_pic(file: UploadFile = File(...)):
-    UPLOAD_DIR = Path("uploads/profiles")
+    UPLOAD_DIR = Path(settings.MEDIA_ROOT) / "profiles"
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     
     file_extension = file.filename.split(".")[-1]
@@ -29,7 +30,7 @@ async def upload_user_profile_pic(file: UploadFile = File(...)):
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    return {"success": True, "profile_pic": f"/uploads/profiles/{new_filename}"}
+    return {"success": True, "profile_pic": f"{settings.MEDIA_URL.rstrip('/')}/profiles/{new_filename}"}
 
 
 def _tenant_id(current_user: dict) -> int | None:

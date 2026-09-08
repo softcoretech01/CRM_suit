@@ -1,4 +1,18 @@
-const API_BASE_URL = '/api';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '';
+
+/**
+ * Safely generates a full URL for uploaded media files.
+ * Uses BACKEND_URL for production where relative paths won't work on the frontend server.
+ */
+export function getMediaUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const baseUrl = BACKEND_URL.replace(/\/+$/, '');
+  return `${baseUrl}${cleanPath}`;
+}
+
 
 /**
  * Helper utility to perform HTTP requests to the backend API.
