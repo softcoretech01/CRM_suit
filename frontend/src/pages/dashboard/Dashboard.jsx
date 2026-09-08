@@ -95,7 +95,7 @@ export default function Dashboard() {
   const pendingList = fFollowUps
     .filter((f) => isPending(f) && fuDay(f))
     .sort((a, b) => (fuDay(a) < fuDay(b) ? -1 : 1))
-    .slice(0, 6);
+    .slice(0, 15);
 
   const pipelineStages = useMemo(() => {
     const openLeads = fLeads.filter((l) => !['Closed', 'Cancelled'].includes(l.closure_status || 'Open')).length;
@@ -199,8 +199,8 @@ export default function Dashboard() {
             </div>
             <button className="btn btn-light btn-sm" onClick={() => navigate('/activities/followups')}>All</button>
           </div>
-          {loading ? <Skeleton h={220} /> : (
-            <div className="d-flex flex-column" style={{ gap: '1px', background: 'var(--border)' }}>
+          {loading ? <Skeleton h={420} /> : (
+            <div className="d-flex flex-column" style={{ gap: '1px', background: 'var(--border)', maxHeight: 420, overflowY: 'auto' }}>
               {pendingList.length === 0 && (
                 <div className="bg-white text-center text-muted-c py-5 fs-13"><CalendarCheck size={22} className="d-block mx-auto mb-2 text-secondary-c" />No pending follow-ups 🎉</div>
               )}
