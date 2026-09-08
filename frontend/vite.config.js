@@ -7,16 +7,22 @@ export default defineConfig({
     port: 5173,
     open: false,
     host: '0.0.0.0',
+    allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://backend:8000',
+        target: 'http://crm_backend:8000',
         changeOrigin: true
       },
       '/uploads': {
-        target: 'http://backend:8000',
+        target: 'http://crm_backend:8000',
         changeOrigin: true,
       }
     }
+  },
+  preview: {
+    port: 3000,
+    host: '0.0.0.0',
+    allowedHosts: true,
   },
   build: {
     rollupOptions: {
@@ -29,4 +35,3 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
   },
 })
-

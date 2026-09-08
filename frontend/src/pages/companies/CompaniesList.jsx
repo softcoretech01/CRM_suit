@@ -205,7 +205,6 @@ export default function CompaniesList() {
         rows={rows}
         keyField="id"
         loading={loading}
-        onRowClick={(r) => navigate(`/companies/${r.id}`)}
         searchPlaceholder="Search companies, code, city..."
         searchKeys={['name', 'code', 'legalName', 'city', 'address', 'gst']}
         filters={filters}

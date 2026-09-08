@@ -256,8 +256,7 @@ export default function UsersList() {
         rows={rows}
         keyField="id"
         loading={loading}
-        onRowClick={(r) => setViewUser(r)}
-        searchPlaceholder="Search users, email, role..."
+        searchPlaceholder="Search by name, email, role..."
         searchKeys={['name', 'email', 'department', 'designation', 'role', 'company_name']}
         filters={filters}
         empty={<EmptyState icon="bi-people" title="No users found" message="Try adjusting filters, or add a new user." action={<button className="btn btn-primary" onClick={openAdd}><i className="bi bi-person-plus" /> Add User</button>} />}

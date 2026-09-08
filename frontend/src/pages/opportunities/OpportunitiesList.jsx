@@ -121,7 +121,6 @@ export default function OpportunitiesList() {
 
       <DateRangeBar onApply={setRange} />
       <DataTable columns={columns} rows={filtered} keyField="id" loading={loading} filters={filters}
-        onRowClick={(r) => navigate(`/opportunities/${r.id}`)}
         searchPlaceholder="Search opportunity, company..." searchKeys={['name', 'company_name', 'lead_name', 'stage']}
         empty={<EmptyState icon="bi-graph-up-arrow" title="No opportunities yet" message="Create one, or convert a lead from the Leads screen." action={<button className="btn btn-primary" onClick={openNew}><i className="bi bi-plus-lg" /> New Opportunity</button>} />} />
 

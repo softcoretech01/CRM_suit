@@ -122,6 +122,18 @@ export default function ContactsList() {
       key: 'name', label: 'Name', sortable: true, accessor: (r) => r.name, className: 'text-nowrap',
       render: (r) => <span className="fw-6 text-nowrap">{r.name}</span>,
     },
+    {
+      key: 'company', label: 'Company', sortable: true,
+      accessor: (r) => {
+        const c = crm.companies.find(c => String(c.id) === String(r.companyId));
+        return c ? c.name : (r.company || '');
+      },
+      className: 'text-nowrap',
+      render: (r) => {
+        const c = crm.companies.find(c => String(c.id) === String(r.companyId));
+        return <span className="fw-5 text-nowrap">{c ? c.name : (r.company || '—')}</span>;
+      }
+    },
     { key: 'designation', label: 'Designation', sortable: true, className: 'text-nowrap', render: (r) => <Badge tone="tone-gray">{r.designation}</Badge> },
     { key: 'email', label: 'Email', className: 'text-nowrap', render: (r) => r.email ? <a href={`mailto:${r.email}`} onClick={(e) => e.stopPropagation()}>{r.email}</a> : '—' },
     { key: 'mobile', label: 'Mobile', className: 'mono text-nowrap', render: (r) => r.mobile || '—' },
@@ -167,7 +179,6 @@ export default function ContactsList() {
         rows={rows}
         keyField="id"
         loading={loading}
-        onRowClick={(r) => navigate(`/contacts/${r.id}`)}
         searchPlaceholder="Search name, company, email..."
         searchKeys={['name', 'company', 'designation', 'email', 'mobile', 'department']}
         filters={filters}

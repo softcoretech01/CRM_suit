@@ -60,7 +60,6 @@ export default function ProposalsList() {
         columns={columns}
         rows={filtered}
         keyField="id"
-        onRowClick={r => navigate(`/proposals/${r.id}`)}
         searchPlaceholder="Search proposals by name or number..."
         searchKeys={['name', 'number', 'company']}
         pageSize={10}
