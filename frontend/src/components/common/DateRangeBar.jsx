@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 export function inRange(dateVal, range) {
   if (!range || (!range.from && !range.to)) return true;
   const d = dateVal ? String(dateVal).replace('T', ' ').slice(0, 10) : '';
-  if (!d) return false;
+  if (!d) return true; // Include records without a date rather than hiding them
   if (range.from && d < range.from) return false;
   if (range.to && d > range.to) return false;
   return true;
@@ -13,10 +13,7 @@ export function inRange(dateVal, range) {
 const pad = (n) => String(n).padStart(2, '0');
 // Default filter window: 1st of the current month → today.
 export function defaultRange() {
-  const d = new Date();
-  const from = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`;
-  const to = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  return { from, to };
+  return { from: '', to: '' };
 }
 
 /**

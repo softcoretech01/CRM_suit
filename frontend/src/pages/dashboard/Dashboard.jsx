@@ -75,9 +75,9 @@ export default function Dashboard() {
   };
 
   // Apply the date-range window (by record creation date) to the dashboard data.
-  const fLeads = useMemo(() => leads.filter((l) => inRange(l.created_at, range)), [leads, range]);
-  const fOpps = useMemo(() => opportunities.filter((o) => inRange(o.created_at, range)), [opportunities, range]);
-  const fFollowUps = useMemo(() => followUps.filter((f) => inRange(f.created_at, range)), [followUps, range]);
+  const fLeads = useMemo(() => leads.filter((l) => inRange(l.created_at || l.date, range)), [leads, range]);
+  const fOpps = useMemo(() => opportunities.filter((o) => inRange(o.created_at || o.date || o.closing, range)), [opportunities, range]);
+  const fFollowUps = useMemo(() => followUps.filter((f) => inRange(f.created_at || f.date, range)), [followUps, range]);
 
   const kpis = useMemo(() => {
     const totalLeads = fLeads.length;

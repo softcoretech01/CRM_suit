@@ -10,6 +10,9 @@ import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { formatDate, statusTone, colorFor } from '../../utils/format';
 
+import { apiFetch, BACKEND_URL, API_BASE_URL } from '../../utils/api';
+
+
 const STATUS_OPTIONS = ['Active', 'Inactive'];
 
 const emptyForm = {
@@ -56,14 +59,10 @@ export default function UsersList() {
     const formData = new FormData();
     formData.append('file', croppedFile);
     try {
-      const token = sessionStorage.getItem('token');
-      const res = await fetch('/api/admin/users/upload-profile-pic', {
+      const data = await apiFetch('/admin/users/upload-profile-pic', {
         method: 'POST',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,
       });
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
       if (data.profile_pic) {
         setForm((f) => ({ ...f, profile_pic: data.profile_pic, profilePic: data.profile_pic }));
         toast.success('Photo uploaded', 'Profile picture uploaded successfully.');

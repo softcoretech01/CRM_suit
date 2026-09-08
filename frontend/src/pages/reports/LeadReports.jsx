@@ -43,22 +43,22 @@ export default function LeadReports() {
 
   const pad = (n) => String(n).padStart(2, '0');
   const now = new Date();
-  const monthStart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
   const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
-  const [filters, setFilters] = useState({ from: monthStart, to: today, company_id: '', temperature: '', closure_status: '' });
+  const [filters, setFilters] = useState({ from: '', to: '', company_id: '', temperature: '', closure_status: '' });
 
   useEffect(() => { apiFetch('/crm/companies').then((r) => setCompanies(r.data || [])).catch(() => {}); }, []);
 
-  const run = useCallback(async () => {
+  const run = useCallback(async (overrideFilters) => {
     setLoading(true);
+    const f = overrideFilters && overrideFilters.from !== undefined ? overrideFilters : filters;
     try {
       const qs = new URLSearchParams();
-      if (filters.from) qs.set('from_date', filters.from);
-      if (filters.to) qs.set('to_date', filters.to);
-      if (filters.company_id) qs.set('company_id', filters.company_id);
-      if (filters.temperature) qs.set('temperature', filters.temperature);
-      if (filters.closure_status) qs.set('closure_status', filters.closure_status);
+      if (f.from) qs.set('from_date', f.from);
+      if (f.to) qs.set('to_date', f.to);
+      if (f.company_id) qs.set('company_id', f.company_id);
+      if (f.temperature) qs.set('temperature', f.temperature);
+      if (f.closure_status) qs.set('closure_status', f.closure_status);
       const res = await apiFetch(`/crm/reports/leads?${qs.toString()}`);
       setRows(res.data || []);
     } catch { toast.error('Error', 'Failed to run report'); }
@@ -101,13 +101,36 @@ export default function LeadReports() {
 
       {/* Filter bar */}
       <div className="surface p-3 mb-3">
-        <div className="row g-2 align-items-end">
-          <Field label="From" col={2}><input type="date" className="form-control form-control-sm" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} /></Field>
-          <Field label="To" col={2}><input type="date" className="form-control form-control-sm" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} /></Field>
-          <Field label="Customer" col={3}><select className="form-select form-select-sm" value={filters.company_id} onChange={(e) => setFilters({ ...filters, company_id: e.target.value })}><option value="">All Customers</option>{companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
-          <Field label="Status" col={2}><select className="form-select form-select-sm" value={filters.temperature} onChange={(e) => setFilters({ ...filters, temperature: e.target.value })}><option value="">All</option>{['Hot', 'Warm', 'Cold'].map((t) => <option key={t}>{t}</option>)}</select></Field>
-          <Field label="Closure" col={2}><select className="form-select form-select-sm" value={filters.closure_status} onChange={(e) => setFilters({ ...filters, closure_status: e.target.value })}><option value="">All</option>{['Open', 'Closed', 'Cancelled'].map((s) => <option key={s}>{s}</option>)}</select></Field>
-          <div className="col-1 d-grid"><button className="btn btn-primary btn-sm" onClick={run}><i className="bi bi-search" /></button></div>
+        <div className="d-flex flex-wrap align-items-end gap-3">
+          <div style={{ width: 130 }}>
+            <div className="form-label text-muted fs-13 mb-1">From</div>
+            <input type="date" className="form-control form-control-sm" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} />
+          </div>
+          <div style={{ width: 130 }}>
+            <div className="form-label text-muted fs-13 mb-1">To</div>
+            <input type="date" className="form-control form-control-sm" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} />
+          </div>
+          <div style={{ flex: 1, minWidth: 160, maxWidth: 220 }}>
+            <div className="form-label text-muted fs-13 mb-1">Customer</div>
+            <select className="form-select form-select-sm" value={filters.company_id} onChange={(e) => setFilters({ ...filters, company_id: e.target.value })}><option value="">All Customers</option>{companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          </div>
+          <div style={{ width: 120 }}>
+            <div className="form-label text-muted fs-13 mb-1">Status</div>
+            <select className="form-select form-select-sm" value={filters.temperature} onChange={(e) => setFilters({ ...filters, temperature: e.target.value })}><option value="">All</option>{['Hot', 'Warm', 'Cold'].map((t) => <option key={t}>{t}</option>)}</select>
+          </div>
+          <div style={{ width: 120 }}>
+            <div className="form-label text-muted fs-13 mb-1">Closure</div>
+            <select className="form-select form-select-sm" value={filters.closure_status} onChange={(e) => setFilters({ ...filters, closure_status: e.target.value })}><option value="">All</option>{['Open', 'Closed', 'Cancelled'].map((s) => <option key={s}>{s}</option>)}</select>
+          </div>
+          
+          <div className="d-flex gap-2 align-items-end border-start ps-3 ms-2">
+            <button className="btn btn-primary d-flex align-items-center gap-1 px-3" onClick={() => run()}><i className="bi bi-search" /> Search</button>
+            <button className="btn btn-light d-flex align-items-center gap-1 px-3" onClick={() => { 
+              const empty = { from: '', to: '', company_id: '', temperature: '', closure_status: '' };
+              setFilters(empty); 
+              run(empty); 
+            }}><i className="bi bi-x-circle" /> Cancel</button>
+          </div>
         </div>
       </div>
 
@@ -136,12 +159,14 @@ export default function LeadReports() {
       {/* Grid */}
       <div className="surface" style={{ overflow: 'auto' }}>
         <table className="table table-hover align-middle mb-0">
-          <thead><tr>{visibleCols.map((c) => <th key={c.key} className="text-nowrap fs-13">{c.label}</th>)}</tr></thead>
+          <thead><tr><th className="text-nowrap fs-13 text-secondary-c" style={{ width: '60px' }}>S.No</th>{visibleCols.map((c) => <th key={c.key} className="text-nowrap fs-13">{c.label}</th>)}</tr></thead>
           <tbody>
-            {loading ? <tr><td colSpan={visibleCols.length} className="text-center py-4 text-muted-c">Loading…</td></tr>
-              : shown.length === 0 ? <tr><td colSpan={visibleCols.length} className="text-center py-4 text-muted-c">No records match the filters.</td></tr>
-                : shown.map((r) => (
-                  <tr key={r.id}>{visibleCols.map((c) => (
+            {loading ? <tr><td colSpan={visibleCols.length + 1} className="text-center py-4 text-muted-c">Loading…</td></tr>
+              : shown.length === 0 ? <tr><td colSpan={visibleCols.length + 1} className="text-center py-4 text-muted-c">No records match the filters.</td></tr>
+                : shown.map((r, i) => (
+                  <tr key={r.id}>
+                    <td className="fs-13 text-secondary-c">{i + 1}</td>
+                    {visibleCols.map((c) => (
                     <td key={c.key} className="fs-13 text-nowrap">
                       {c.key === 'temperature' ? <Badge tone={{ Hot: 'tone-red', Warm: 'tone-amber', Cold: 'tone-blue' }[r.temperature] || 'tone-gray'} dot>{r.temperature || '—'}</Badge>
                         : c.key === 'closure_status' ? <Badge tone={{ Open: 'tone-blue', Closed: 'tone-green', Cancelled: 'tone-gray' }[r.closure_status] || 'tone-gray'}>{r.closure_status || 'Open'}</Badge>

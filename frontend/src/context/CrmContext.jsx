@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import * as mock from '../data/mockData';
 import { apiFetch } from '../utils/api';
 import { colorFor } from '../utils/format';
 import { defaultMatrixFor, fallbackRoles } from '../data/permissionDefaults';
@@ -30,6 +29,61 @@ export function CrmProvider({ children }) {
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
   const [productCategories, setProductCategories] = useState([]);
+
+  // Volume 3 & 4 state
+  const [followUps, setFollowUps] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [emailCampaigns, setEmailCampaigns] = useState([]);
+  const [whatsappCampaigns, setWhatsappCampaigns] = useState([]);
+  const [automations, setAutomations] = useState([]);
+  const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [proposals, setProposals] = useState([]);
+
+  // ---- Granular, per-entity refreshers ----
+  // Each does ONE targeted fetch and updates only its own slice of state, so a
+  // mutation can sync just the affected entity (no full-CRM refetch, no reload).
+  const refreshUsers = useCallback(() => apiFetch('/admin/users').then(res => {
+    const list = res.data || res.items || (Array.isArray(res) ? res : []);
+    setUsers(list.map(u => {
+      const name = u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Unknown';
+      return { ...u, name, color: colorFor(name), role: u.role || u.role_name || '', department: u.department || '', designation: u.designation || '', branch: 'HQ', email: u.email, mobile: u.mobile || '', status: u.status === 'ACTIVE' || u.status === 'Active' ? 'Active' : 'Inactive' };
+    }));
+  }).catch(err => console.error("Failed to fetch users:", err)), []);
+
+  const refreshCompanies = useCallback(() => apiFetch('/crm/companies').then(res => {
+    const list = res.data || (Array.isArray(res) ? res : []);
+    setCompanies(list.map(c => ({ ...c, status: c.status === 'ACTIVE' || c.status === 'Active' ? 'Active' : 'Inactive' })));
+  }).catch(err => console.error("Failed to fetch companies:", err)), []);
+
+  const refreshAdminCompanies = useCallback(() => apiFetch('/admin/companies').then(res => {
+    const list = res.data || (Array.isArray(res) ? res : []);
+    setAdminCompanies(list.map(c => ({ ...c, status: c.status === 'ACTIVE' || c.status === 'Active' ? 'Active' : 'Inactive' })));
+  }).catch(err => console.error("Failed to fetch admin companies:", err)), []);
+
+  const refreshProducts = useCallback(() => apiFetch('/crm/products').then(res => {
+    setProducts(res.data || (Array.isArray(res) ? res : []));
+  }).catch(err => console.error("Failed to fetch products:", err)), []);
+
+  const refreshContacts = useCallback(() => apiFetch('/crm/contacts').then(res => {
+    const list = res.data || (Array.isArray(res) ? res : []);
+    setContacts(list.map(c => ({ ...c, companyId: c.crm_company_id || c.company_id || c.companyId, name: c.name || `${c.first_name || ''} ${c.last_name || ''}`.trim(), status: c.status === 'ACTIVE' ? 'Active' : c.status === 'INACTIVE' ? 'Inactive' : c.status })));
+  }).catch(err => console.error("Failed to fetch contacts:", err)), []);
+
+  const refreshLeads = useCallback(() => apiFetch('/crm/leads').then(res => {
+    setLeads(res.data || (Array.isArray(res) ? res : []));
+  }).catch(err => console.error("Failed to fetch leads:", err)), []);
+
+  const refreshOpportunities = useCallback(() => apiFetch('/crm/opportunities').then(res => {
+    setOpportunities(res.data || (Array.isArray(res) ? res : []));
+  }).catch(err => console.error("Failed to fetch opportunities:", err)), []);
+
+  const refreshActivities = useCallback(() => apiFetch('/crm/activities').then(res => {
+    setActivities(res.data || (Array.isArray(res) ? res : []));
+  }).catch(err => console.error("Failed to fetch activities:", err)), []);
+
+  const refreshFollowUps = useCallback(() => apiFetch('/crm/followups').then(res => {
+    setFollowUps(res.data || (Array.isArray(res) ? res : []));
+  }).catch(err => console.error("Failed to fetch followups:", err)), []);
 
   const fetchAll = useCallback(() => {
     if (!sessionStorage.getItem('token')) return;
@@ -70,64 +124,15 @@ export function CrmProvider({ children }) {
       setRoles(fallbackRoles);
     });
 
-    apiFetch('/admin/users').then(res => {
-      console.log('USERS API RESPONSE:', res);
-      const list = res.data || res.items || (Array.isArray(res) ? res : []);
-      console.log('USERS PARSED LIST:', list);
-      if (list && list.length > 0) {
-        setUsers(list.map(u => {
-          const name = u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'Unknown';
-          return {
-            ...u,
-            name,
-            color: colorFor(name),
-            role: u.role || u.role_name || '',
-            department: u.department || '',
-            designation: u.designation || '',
-            branch: 'HQ',
-            email: u.email,
-            mobile: u.mobile || '',
-            status: u.status === 'ACTIVE' || u.status === 'Active' ? 'Active' : 'Inactive',
-          };
-        }));
-      }
-    }).catch(err => console.error("Failed to fetch users:", err));
-
-    const fetchCompanies = () => {
-      const prefix = '/crm';
-      apiFetch(`${prefix}/companies`).then(res => {
-        console.log('COMPANIES API RESPONSE:', res);
-        const list = res.data || (Array.isArray(res) ? res : []);
-        console.log('COMPANIES PARSED LIST:', list);
-        if (list && list.length > 0) {
-          setCompanies(list.map(c => ({
-            ...c,
-            status: c.status === 'ACTIVE' || c.status === 'Active' ? 'Active' : 'Inactive'
-          })));
-        }
-      }).catch(err => console.error("Failed to fetch companies:", err));
-    };
-    
-    const fetchAdminCompanies = () => {
-      apiFetch('/admin/companies').then(res => {
-        console.log('ADMIN COMPANIES API RESPONSE:', res);
-        const list = res.data || (Array.isArray(res) ? res : []);
-        if (list && list.length > 0) {
-          setAdminCompanies(list.map(c => ({
-            ...c,
-            status: c.status === 'ACTIVE' || c.status === 'Active' ? 'Active' : 'Inactive'
-          })));
-        }
-      }).catch(err => console.error("Failed to fetch admin companies:", err));
-    };
-
-    fetchCompanies();
-    fetchAdminCompanies();
+    // Entity loads are delegated to the granular refresh functions below so the
+    // same code populates on first load and on targeted post-mutation refresh.
+    refreshUsers();
+    refreshCompanies();
+    refreshAdminCompanies();
 
     const fetchMaster = (slug, setter) => {
       apiFetch(`/masters/${slug}`).then(res => {
-        const list = res.data || (Array.isArray(res) ? res : []);
-        if (list && list.length > 0) setter(list);
+        setter(res.data || (Array.isArray(res) ? res : []));
       }).catch(err => console.error(`Failed to fetch ${slug}:`, err));
     };
 
@@ -142,59 +147,23 @@ export function CrmProvider({ children }) {
     fetchMaster('countries', setCountries);
     fetchMaster('states', setStates);
     fetchMaster('cities', setCities);
-
-    // Product Categories
     fetchMaster('product-categories', setProductCategories);
 
-    const prefix = '/crm';
-    
-    apiFetch(`${prefix}/products`).then(res => {
-      if (res.data) setProducts(res.data);
-    }).catch(err => console.error("Failed to fetch products:", err));
-    
-    apiFetch('/crm/contacts').then(res => {
-      if (res.data) setContacts(res.data.map(c => ({
-        ...c,
-        companyId: c.crm_company_id || c.company_id || c.companyId,
-        name: c.name || `${c.first_name || ''} ${c.last_name || ''}`.trim(),
-        status: c.status === 'ACTIVE' ? 'Active' : c.status === 'INACTIVE' ? 'Inactive' : c.status
-      })));
-    }).catch(err => console.error("Failed to fetch contacts:", err));
-
-    // Fetch CRM data
-    apiFetch('/crm/leads').then(res => {
-      if (res.data) setLeads(res.data);
-    }).catch(err => console.error("Failed to fetch leads:", err));
-
-    apiFetch('/crm/opportunities').then(res => {
-      if (res.data) setOpportunities(res.data);
-    }).catch(err => console.error("Failed to fetch opportunities:", err));
-
-    apiFetch('/crm/activities').then(res => {
-      if (res.data) setActivities(res.data);
-    }).catch(err => console.error("Failed to fetch activities:", err));
-
-    apiFetch('/crm/followups').then(res => {
-      if (res.data) setFollowUps(res.data);
-    }).catch(err => console.error("Failed to fetch followups:", err));
+    refreshProducts();
+    refreshContacts();
+    refreshLeads();
+    refreshOpportunities();
+    refreshActivities();
+    refreshFollowUps();
 
     apiFetch('/crm/approvals').then(res => {
-      if (res.data) setPendingApprovals(res.data);
+      setPendingApprovals(res.data || (Array.isArray(res) ? res : []));
     }).catch(err => console.error("Failed to fetch approvals:", err));
-  }, []);
+  }, [refreshUsers, refreshCompanies, refreshAdminCompanies, refreshProducts, refreshContacts, refreshLeads, refreshOpportunities, refreshActivities, refreshFollowUps]);
 
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
-
-  // Volume 3 & 4 state
-  const [followUps, setFollowUps] = useState([]);
-  const [documents, setDocuments] = useState([]);
-  const [emailCampaigns, setEmailCampaigns] = useState([]);
-  const [whatsappCampaigns, setWhatsappCampaigns] = useState([]);
-  const [automations, setAutomations] = useState([]);
-  const [pendingApprovals, setPendingApprovals] = useState([]);
-  const [proposals, setProposals] = useState([]);
 
   // ---- Leads ----
   const num = (v) => (v != null && v !== '' && !Number.isNaN(Number(v)) ? Number(v) : null);
@@ -227,12 +196,13 @@ export function CrmProvider({ children }) {
       const res = await apiFetch('/crm/leads', { method: 'POST', body });
       const rec = { id: res.data.id, ...lead };
       setLeads((l) => [rec, ...l]);
+      refreshLeads();
       return rec;
     } catch (err) {
       console.error("Failed to add lead:", err);
       throw err;
     }
-  }, [users]);
+  }, [users, refreshLeads]);
 
   const updateLead = useCallback(async (id, patch) => {
     try {
@@ -260,11 +230,12 @@ export function CrmProvider({ children }) {
       };
       await apiFetch(`/crm/leads/${id}`, { method: 'PUT', body });
       setLeads((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      refreshLeads();
     } catch (err) {
       console.error("Failed to update lead:", err);
       throw err;
     }
-  }, [users]);
+  }, [users, refreshLeads]);
 
   const deleteLead = useCallback(async (id) => {
     try {
@@ -286,23 +257,25 @@ export function CrmProvider({ children }) {
       const new_id = res.data?.id || res.id;
       const rec = { id: new_id, ...payload };
       setCompanies((l) => [rec, ...l]);
+      refreshCompanies();
       return rec;
     } catch (err) {
       console.error("Failed to add company:", err);
       throw err;
     }
-  }, []);
+  }, [refreshCompanies]);
 
   const updateCompany = useCallback(async (id, patch) => {
     try {
       const prefix = '/crm';
       await apiFetch(`${prefix}/companies/${id}`, { method: 'PUT', body: patch });
       setCompanies((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      refreshCompanies();
     } catch (err) {
       console.error("Failed to update company:", err);
       throw err;
     }
-  }, []);
+  }, [refreshCompanies]);
 
   const deleteCompany = useCallback(async (id) => {
     try {
@@ -336,12 +309,13 @@ export function CrmProvider({ children }) {
       const new_id = res.data?.id || res.id;
       const rec = { id: new_id, ...payload };
       setContacts((l) => [rec, ...l]);
+      refreshContacts();
       return rec;
     } catch (err) {
       console.error("Failed to add contact:", err);
       throw err;
     }
-  }, []);
+  }, [refreshContacts]);
 
   const updateContact = useCallback(async (id, patch) => {
     try {
@@ -365,11 +339,12 @@ export function CrmProvider({ children }) {
       }
       await apiFetch(`/crm/contacts/${id}`, { method: 'PUT', body: payload });
       setContacts((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      refreshContacts();
     } catch (err) {
       console.error("Failed to update contact:", err);
       throw err;
     }
-  }, []);
+  }, [refreshContacts]);
 
   const deleteContact = useCallback(async (id) => {
     try {
@@ -391,23 +366,25 @@ export function CrmProvider({ children }) {
       const new_id = res.data?.id || res.id;
       const rec = { id: new_id, ...payload };
       setProducts((l) => [rec, ...l]);
+      refreshProducts();
       return rec;
     } catch (err) {
       console.error("Failed to add product:", err);
       throw err;
     }
-  }, []);
+  }, [refreshProducts]);
 
   const updateProduct = useCallback(async (id, patch) => {
     try {
       const prefix = '/crm';
       await apiFetch(`${prefix}/products/${id}`, { method: 'PUT', body: patch });
       setProducts((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      refreshProducts();
     } catch (err) {
       console.error("Failed to update product:", err);
       throw err;
     }
-  }, []);
+  }, [refreshProducts]);
 
   const deleteProduct = useCallback(async (id) => {
     try {
@@ -430,30 +407,37 @@ export function CrmProvider({ children }) {
       });
       const rec = { id: res.data?.opportunity_id || res.data?.id, ...o };
       setOpportunities((l) => [rec, ...l]);
+      // Converting a lead also changes the lead, so refresh both slices.
+      refreshOpportunities();
+      refreshLeads();
       return rec;
     } catch (err) {
       console.error("Failed to add opportunity:", err);
       throw err;
     }
-  }, []);
+  }, [refreshOpportunities, refreshLeads]);
 
   const updateOpportunity = useCallback(async (id, patch) => {
     try {
       const stage = patch.stage ?? patch.status;
+      let wrote = false;
       if (stage !== undefined && stage !== null && stage !== '') {
         // Stage/status changes go through the dedicated stage endpoint.
         await apiFetch(`/crm/opportunities/${id}/stage`, { method: 'POST', body: { stage } });
+        wrote = true;
       } else if (patch.name !== undefined || patch.value !== undefined || patch.expected_close !== undefined) {
         // Field edits go through the standard update endpoint.
         await apiFetch(`/crm/opportunities/${id}`, { method: 'PUT', body: patch });
+        wrote = true;
       }
       // Other patches (e.g. next-action hints) are local-only — no destructive write.
       setOpportunities((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      if (wrote) refreshOpportunities();
     } catch (err) {
       console.error("Failed to update opportunity:", err);
       throw err;
     }
-  }, []);
+  }, [refreshOpportunities]);
 
   const deleteOpportunity = useCallback((id) => setOpportunities((l) => l.filter((x) => x.id !== id)), []);
 
@@ -463,12 +447,13 @@ export function CrmProvider({ children }) {
       const res = await apiFetch('/crm/activities', { method: 'POST', body: a });
       const rec = { id: res.data.id, ...a };
       setActivities((l) => [rec, ...l]);
+      refreshActivities();
       return rec;
     } catch (err) {
       console.error("Failed to log activity:", err);
       throw err;
     }
-  }, []);
+  }, [refreshActivities]);
 
   const updateActivity = useCallback((id, patch) => {
     setActivities((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
@@ -480,35 +465,44 @@ export function CrmProvider({ children }) {
   const addFollowUp = useCallback(async (f) => {
     try {
       const res = await apiFetch('/crm/followups', { method: 'POST', body: f });
-      const rec = { id: res.data.id, ...f };
-      setFollowUps((l) => [rec, ...l]);
-      return rec;
+      // Refresh the authoritative list (with joined lead/company/related fields).
+      await refreshFollowUps();
+      return { id: res.data?.id, ...f };
     } catch (err) {
       console.error("Failed to add follow-up:", err);
       throw err;
     }
-  }, []);
+  }, [refreshFollowUps]);
 
   const updateFollowUp = useCallback(async (id, patch) => {
     try {
       const status = String(patch.status || '').toLowerCase();
       if (status === 'completed' || status === 'done') {
-        // Completion is a dedicated endpoint that also logs the activity.
+        // Completion is a dedicated endpoint that also logs an activity.
         await apiFetch(`/crm/followups/${id}/done`, {
           method: 'POST',
           body: { outcome: patch.outcome || '', subject: patch.subject || '' },
         });
+        await Promise.all([refreshFollowUps(), refreshActivities()]);
       } else {
         await apiFetch(`/crm/followups/${id}`, { method: 'PUT', body: patch });
+        await refreshFollowUps();
       }
-      setFollowUps((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
     } catch (err) {
       console.error("Failed to update follow-up:", err);
       throw err;
     }
-  }, []);
+  }, [refreshFollowUps, refreshActivities]);
 
-  const deleteFollowUp = useCallback((id) => setFollowUps((l) => l.filter((x) => x.id !== id)), []);
+  const deleteFollowUp = useCallback(async (id) => {
+    try {
+      await apiFetch(`/crm/followups/${id}`, { method: 'DELETE' });
+      await refreshFollowUps();
+    } catch (err) {
+      console.error("Failed to delete follow-up:", err);
+      throw err;
+    }
+  }, [refreshFollowUps]);
 
   // ---- Users ----
   const addUser = useCallback(async (u) => {
@@ -547,12 +541,13 @@ export function CrmProvider({ children }) {
         ...u 
       };
       setUsers((l) => [rec, ...l]);
+      refreshUsers();
       return rec;
     } catch (err) {
       console.error("Failed to add user:", err);
       throw err;
     }
-  }, [roles]);
+  }, [roles, refreshUsers]);
   const updateUser = useCallback(async (id, patch) => {
     const toDb = (s) => (s === 'Active' ? 'ACTIVE' : s === 'Inactive' ? 'INACTIVE' : s);
     try {
@@ -577,11 +572,12 @@ export function CrmProvider({ children }) {
         await apiFetch(`/admin/users/${id}`, { method: 'PUT', body });
       }
       setUsers((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      refreshUsers();
     } catch (err) {
       console.error("Failed to update user:", err);
       throw err;
     }
-  }, [roles]);
+  }, [roles, refreshUsers]);
 
   const deleteUser = useCallback(async (id) => {
     try {
@@ -661,44 +657,30 @@ export function CrmProvider({ children }) {
     countries, states, cities,
     setStates, setCities,
     fetchAll,
-    refreshCompanies: () => {
-      apiFetch('/crm/companies').then(res => {
-        if (res.data) setCompanies(res.data.map(c => ({
-          ...c,
-          status: c.status === 'ACTIVE' ? 'Active' : c.status === 'INACTIVE' ? 'Inactive' : c.status
-        })));
-      }).catch(err => console.error("Failed to fetch companies:", err));
-    },
+    refreshUsers, refreshCompanies, refreshAdminCompanies, refreshProducts,
+    refreshContacts, refreshLeads, refreshOpportunities, refreshActivities, refreshFollowUps,
     refreshMaster: (slug) => {
-      const asList = (res) => (Array.isArray(res) ? res : (res?.data || []));
-      if (slug === 'companies' || slug === 'company') {
-        apiFetch('/crm/companies').then(res => {
-          setCompanies(asList(res).map(c => ({ ...c, status: c.status === 'ACTIVE' ? 'Active' : c.status === 'INACTIVE' ? 'Inactive' : c.status })));
-        }).catch(err => console.error("Failed to fetch companies:", err));
-      } else if (slug === 'products') {
-        // Products are a CRM resource, not a masters list.
-        apiFetch('/crm/products').then(res => setProducts(asList(res)))
-          .catch(err => console.error("Failed to fetch products:", err));
-      } else {
-        const setters = {
-          'lead-sources': setLeadSources,
-          'campaigns': setCampaigns,
-          'industries': setIndustries,
-          'company-types': setCompanyTypes,
-          'product-categories': setProductCategories,
-          'activity-types': setActivityTypes,
-          'lead-statuses': setLeadStatuses,
-          'next-actions': setNextActions,
-          'priorities': setPriorities,
-          'countries': setCountries,
-          'states': setStates,
-          'cities': setCities,
-        };
-        const setter = setters[slug];
-        if (setter) {
-          apiFetch(`/masters/${slug}`).then(res => setter(asList(res)))
-            .catch(err => console.error(`Failed to fetch ${slug}:`, err));
-        }
+      if (slug === 'companies' || slug === 'company') return refreshCompanies();
+      if (slug === 'products') return refreshProducts();
+      const setters = {
+        'lead-sources': setLeadSources,
+        'campaigns': setCampaigns,
+        'industries': setIndustries,
+        'company-types': setCompanyTypes,
+        'product-categories': setProductCategories,
+        'activity-types': setActivityTypes,
+        'lead-statuses': setLeadStatuses,
+        'next-actions': setNextActions,
+        'priorities': setPriorities,
+        'countries': setCountries,
+        'states': setStates,
+        'cities': setCities,
+      };
+      const setter = setters[slug];
+      if (setter) {
+        apiFetch(`/masters/${slug}`)
+          .then(res => setter(Array.isArray(res) ? res : (res?.data || [])))
+          .catch(err => console.error(`Failed to fetch ${slug}:`, err));
       }
     }
   };

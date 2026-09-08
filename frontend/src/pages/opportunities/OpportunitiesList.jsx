@@ -9,6 +9,7 @@ import { Drawer, Modal, ConfirmDialog } from '../../components/common/Overlay';
 import ActionIconButton from '../../components/common/ActionIconButton';
 import { Clock } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { useCrm } from '../../context/CrmContext';
 import { apiFetch } from '../../utils/api';
 import DateTimePicker from '../../components/common/DateTimePicker';
 
@@ -24,9 +25,10 @@ const emptyOpp = { name: '', lead_id: '', company_id: '', value: '', stage: 'Qua
 export default function OpportunitiesList() {
   const navigate = useNavigate();
   const toast = useToast();
-  const [rows, setRows] = useState([]);
-  const [companies, setCompanies] = useState([]);
-  const [leads, setLeads] = useState([]);
+  const crm = useCrm();
+  const rows = crm.opportunities || [];
+  const leads = crm.leads || [];
+  const companies = crm.companies || [];
   const [loading, setLoading] = useState(true);
   const [fStage, setFStage] = useState('');
   const [range, setRange] = useState({ from: '', to: '' });
@@ -35,17 +37,10 @@ export default function OpportunitiesList() {
   const [confirmDel, setConfirmDel] = useState(null);
   const [fuOpp, setFuOpp] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try { const res = await apiFetch('/crm/opportunities'); setRows(res.data || []); }
-    catch { toast.error('Error', 'Failed to load opportunities'); }
-    finally { setLoading(false); }
-  }, [toast]);
   useEffect(() => {
-    load();
-    apiFetch('/crm/companies').then((r) => setCompanies(r.data || [])).catch(() => {});
-    apiFetch('/crm/leads').then((r) => setLeads(r.data || [])).catch(() => {});
-  }, [load]);
+    const t = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(t);
+  }, []);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const onStage = (e) => { const s = e.target.value; setForm((f) => ({ ...f, stage: s, probability: STAGE_PROB[s] ?? f.probability })); };
@@ -75,14 +70,14 @@ export default function OpportunitiesList() {
     if (!form.name.trim()) { toast.error('Name required', 'Enter an opportunity name.'); return; }
     const body = { ...form, value: form.value === '' ? null : Number(form.value), probability: Number(form.probability), expected_close_date: form.expected_close_date || null };
     try {
-      if (form.id) { await apiFetch(`/crm/opportunities/${form.id}`, { method: 'PUT', body }); toast.success('Opportunity updated', form.name); }
-      else { await apiFetch('/crm/opportunities', { method: 'POST', body }); toast.success('Opportunity created', form.name); }
-      setDrawer(false); load();
+      if (form.id) { await crm.updateOpportunity(form.id, body); toast.success('Opportunity updated', form.name); }
+      else { await crm.addOpportunity(body); toast.success('Opportunity created', form.name); }
+      setDrawer(false);
     } catch { toast.error('Error', 'Failed to save opportunity'); }
   };
 
   const doDelete = async () => {
-    try { await apiFetch(`/crm/opportunities/${confirmDel.id}`, { method: 'DELETE' }); toast.success('Deleted', confirmDel.name); load(); }
+    try { await crm.deleteOpportunity(confirmDel.id); toast.success('Deleted', confirmDel.name); }
     catch { toast.error('Error', 'Failed to delete'); }
     finally { setConfirmDel(null); }
   };
@@ -137,7 +132,7 @@ export default function OpportunitiesList() {
             <Field label="From Lead (auto-fills details)" col={12}>
               <select className="form-select" value={form.lead_id} onChange={onLead}>
                 <option value="">— none —</option>
-                {leads.map((l) => <option key={l.id} value={l.id}>{l.lead_name}{l.company_name ? ` (${l.company_name})` : ''}</option>)}
+                {leads.filter(l => !rows.some(o => String(o.lead_id) === String(l.id))).map((l) => <option key={l.id} value={l.id}>{l.lead_name}{l.company_name ? ` (${l.company_name})` : ''}</option>)}
               </select>
             </Field>
           )}
@@ -151,7 +146,7 @@ export default function OpportunitiesList() {
         </div>
       </Drawer>
 
-      {fuOpp && <OppFollowUpModal opp={fuOpp} onClose={() => { setFuOpp(null); load(); }} />}
+      {fuOpp && <OppFollowUpModal opp={fuOpp} onClose={() => { setFuOpp(null); }} />}
       <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={doDelete} title="Delete opportunity?" message={`Delete "${confirmDel?.name}"?`} confirmLabel="Delete" />
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import PageHeader from '../../components/common/PageHeader';
 import DataTable from '../../components/common/DataTable';
 import DateRangeBar, { inRange } from '../../components/common/DateRangeBar';
@@ -8,8 +8,11 @@ import { Modal } from '../../components/common/Overlay';
 import ActionIconButton from '../../components/common/ActionIconButton';
 import { CheckCircle2 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { useCrm } from '../../context/CrmContext';
 import { apiFetch } from '../../utils/api';
+import DateTimePicker from '../../components/common/DateTimePicker';
 
+const toSql = (v) => (v ? v.replace('T', ' ') + (v.length === 16 ? ':00' : '') : null);
 const tempTone = (t) => ({ Hot: 'tone-red', Warm: 'tone-amber', Cold: 'tone-blue' }[t] || 'tone-gray');
 const statusTone = (s) => ({ Done: 'tone-green', Completed: 'tone-green', Pending: 'tone-amber', Overdue: 'tone-red' }[s] || 'tone-gray');
 const fmtDT = (v) => {
@@ -26,48 +29,68 @@ const dayOf = (v) => (v ? String(v).slice(0, 10) : '');
 
 export default function FollowUpsList() {
   const toast = useToast();
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Single source of truth: read follow-ups from CrmContext so this list, the
+  // dashboard and the notification bell always show the same data.
+  const { followUps: rows, refreshFollowUps, refreshActivities } = useCrm();
+  const [loading, setLoading] = useState(rows.length === 0);
   const [fStatus, setFStatus] = useState('Pending');
   const [fWhen, setFWhen] = useState(''); // '', 'upcoming', 'overdue'
   const [range, setRange] = useState({ from: '', to: '' });
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try { const res = await apiFetch('/crm/followups'); setRows(res.data || []); }
-    catch { toast.error('Error', 'Failed to load follow-ups'); }
-    finally { setLoading(false); }
-  }, [toast]);
-  useEffect(() => { load(); }, [load]);
+  // Refresh on mount so navigating here always reflects the latest server state.
+  useEffect(() => { Promise.resolve(refreshFollowUps()).finally(() => setLoading(false)); }, [refreshFollowUps]);
 
   // Completing a follow-up: open a popup to capture the outcome, then log it to Activities
   const [completing, setCompleting] = useState(null);
   const [outcome, setOutcome] = useState('');
   const [cSubject, setCSubject] = useState('');
-  const openComplete = (r) => { setCompleting(r); setOutcome(''); setCSubject(r.activity || r.followup_type || ''); };
+  
+  // Schedule Next Follow-up fields
+  const [cNextType, setCNextType] = useState('Call');
+  const [cNextDate, setCNextDate] = useState('');
+  const [cNextSubject, setCNextSubject] = useState('');
+
+  const openComplete = (r) => { 
+    setCompleting(r); 
+    setOutcome(''); 
+    setCSubject(r.activity || r.followup_type || ''); 
+    setCNextType('Call');
+    setCNextDate('');
+    setCNextSubject('');
+  };
+  
   const submitComplete = async () => {
     try {
       await apiFetch(`/crm/followups/${completing.id}/done`, { method: 'POST', body: { outcome, subject: cSubject } });
-      toast.success('Follow-up completed', 'Logged to Activities');
-      setCompleting(null); setOutcome(''); setCSubject(''); load();
+      
+      if (cNextDate) {
+        await apiFetch('/crm/followups', { method: 'POST', body: {
+          lead_id: completing.lead_id, followup_date: toSql(cNextDate), next_followup_date: toSql(cNextDate),
+          followup_type: cNextType, activity: cNextSubject, status: 'Pending',
+        } });
+      }
+      
+      toast.success('Follow-up completed', cNextDate ? 'Logged to Activities + next follow-up scheduled' : 'Logged to Activities');
+      setCompleting(null); setOutcome(''); setCSubject(''); refreshFollowUps(); refreshActivities();
     } catch { toast.error('Error', 'Failed to complete follow-up'); }
   };
 
   const kpis = useMemo(() => {
-    let upcoming = 0, overdue = 0;
+    let pending = 0, upcoming = 0, overdue = 0;
     rows.forEach((r) => {
       const d = dayOf(r.next_followup_date || r.followup_date);
       const s = r.status || 'Pending';
-      if (!d) return;
-      if (d >= today) {
-        if (s !== 'Done' && s !== 'Completed') upcoming++;
-      } else if (s !== 'Done' && s !== 'Completed') {
-        overdue++;
+      if (s !== 'Done' && s !== 'Completed') {
+        pending++;
+        if (d) {
+          if (d >= today) upcoming++;
+          else overdue++;
+        }
       }
     });
-    return { total: rows.length, upcoming, overdue };
+    return { pending, upcoming, overdue };
   }, [rows, today]);
 
   const filtered = useMemo(() => rows.filter((r) => {
@@ -127,9 +150,15 @@ export default function FollowUpsList() {
       <PageHeader title="Follow-ups" subtitle="Upcoming follow-up schedule — mark done to log it to Activities" icon="bi-clock-history" />
 
       <div className="row g-3 mb-3">
-        <div className="col-6 col-lg-4"><StatCard label="Total Follow-ups" value={kpis.total} icon="bi-list-check" color="var(--primary)" /></div>
-        <div className="col-6 col-lg-4"><StatCard label="Upcoming" value={kpis.upcoming} icon="bi-calendar-check" color="var(--success)" /></div>
-        <div className="col-6 col-lg-4"><StatCard label="Overdue" value={kpis.overdue} icon="bi-exclamation-triangle" color="var(--danger)" /></div>
+        <div className="col-6 col-lg-4" style={{ cursor: 'pointer', opacity: fWhen === '' ? 1 : 0.5, transition: 'opacity 0.2s' }} onClick={() => setFWhen('')}>
+          <StatCard label="Pending Follow-ups" value={kpis.pending} icon="bi-list-check" color="var(--primary)" />
+        </div>
+        <div className="col-6 col-lg-4" style={{ cursor: 'pointer', opacity: fWhen === 'upcoming' ? 1 : 0.5, transition: 'opacity 0.2s' }} onClick={() => setFWhen('upcoming')}>
+          <StatCard label="Upcoming" value={kpis.upcoming} icon="bi-calendar-check" color="var(--success)" />
+        </div>
+        <div className="col-6 col-lg-4" style={{ cursor: 'pointer', opacity: fWhen === 'overdue' ? 1 : 0.5, transition: 'opacity 0.2s' }} onClick={() => setFWhen('overdue')}>
+          <StatCard label="Overdue" value={kpis.overdue} icon="bi-exclamation-triangle" color="var(--danger)" />
+        </div>
       </div>
 
       <DateRangeBar onApply={setRange} />
@@ -141,18 +170,27 @@ export default function FollowUpsList() {
       />
 
       {completing && (
-        <Modal open onClose={() => setCompleting(null)} title={`Complete Follow-up — ${completing.lead_name || ''}`} icon="bi-check-circle" width={520}
+        <Modal open onClose={() => setCompleting(null)} title={`Complete Follow-up — ${completing.lead_name || ''}`} icon="bi-check-circle" width={600}
           footer={<><button className="btn btn-light" onClick={() => setCompleting(null)}>Cancel</button><button className="btn btn-primary" onClick={submitComplete}><i className="bi bi-check-lg" /> Save</button></>}>
           <div className="fs-13 text-muted-c mb-2">
             {completing.followup_type} follow-up scheduled for <b>{fmtDT(completing.next_followup_date || completing.followup_date)}</b>.
             Saving logs it as a completed activity on <b>Activities</b> and the lead's history.
           </div>
-          <Field label="Subject" col={12}>
-            <input className="form-control" value={cSubject} onChange={(e) => setCSubject(e.target.value)} placeholder="Subject for the activity" />
-          </Field>
-          <Field label="Outcome" col={12}>
-            <textarea className="form-control" rows={3} value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="What was the result of this follow-up?" autoFocus />
-          </Field>
+          <div className="row g-2 mb-3">
+            <Field label="Subject" col={12}>
+              <input className="form-control" value={cSubject} onChange={(e) => setCSubject(e.target.value)} placeholder="Subject for the activity" />
+            </Field>
+            <Field label="Outcome" col={12}>
+              <textarea className="form-control" rows={3} value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="What was the result of this follow-up?" autoFocus />
+            </Field>
+          </div>
+          
+          <div className="row g-2">
+            <div className="col-12 fs-14 fw-6 text-muted-c border-bottom pb-1 mb-1 mt-2">Schedule Next Follow-up (Optional)</div>
+            <Field label="Type" col={6}><select className="form-select" value={cNextType} onChange={(e) => setCNextType(e.target.value)}>{['Call', 'Email', 'Meeting', 'Visit', 'WhatsApp'].map((t) => <option key={t}>{t}</option>)}</select></Field>
+            <Field label="Date/Time" col={6}><DateTimePicker value={cNextDate} onChange={setCNextDate} /></Field>
+            <Field label="Subject" col={12}><input className="form-control" value={cNextSubject} onChange={(e) => setCNextSubject(e.target.value)} placeholder="What to follow up about..." /></Field>
+          </div>
         </Modal>
       )}
     </div>

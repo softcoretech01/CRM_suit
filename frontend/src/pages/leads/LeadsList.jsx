@@ -35,6 +35,8 @@ const emptyLead = {
   lead_name: '', contact_name: '', phone: '', email: '', address: '',
   business_details: '', requirement: '', temperature: 'Warm', source: '',
   priority: 'Medium', value: '', company_id: '', product_id: '',
+  past_followup_type: 'Call', past_followup_date: '', past_activity: '', past_outcome: '',
+  next_followup_type: 'Call', next_followup_date: '', next_activity: '',
 };
 
 export default function LeadsList() {
@@ -43,10 +45,10 @@ export default function LeadsList() {
   const crm = useCrm();
   const { leadSources } = crm;
 
-  const [leads, setLeads] = useState([]);
-  const [companies, setCompanies] = useState([]);
-  const [contacts, setContacts] = useState([]);
-  const [products, setProducts] = useState([]);
+  const leads = crm.leads || [];
+  const companies = crm.companies || [];
+  const contacts = crm.contacts || [];
+  const products = crm.products || [];
   const [loading, setLoading] = useState(true);
 
   const contactName = (c) => [c.first_name, c.last_name].filter(Boolean).join(' ') || c.name || '';
@@ -81,21 +83,10 @@ export default function LeadsList() {
   const [viewLead, setViewLead] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
 
-  const loadLeads = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await apiFetch('/crm/leads');
-      setLeads(res.data || []);
-    } catch { toast.error('Error', 'Failed to load leads'); }
-    finally { setLoading(false); }
-  }, [toast]);
-
   useEffect(() => {
-    loadLeads();
-    apiFetch('/crm/companies').then((r) => setCompanies(r.data || [])).catch(() => {});
-    apiFetch('/crm/contacts').then((r) => setContacts(r.data || [])).catch(() => {});
-    apiFetch('/crm/products').then((r) => setProducts(r.data || [])).catch(() => {});
-  }, [loadLeads]);
+    const t = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(t);
+  }, []);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -106,6 +97,8 @@ export default function LeadsList() {
       email: l.email || '', address: l.address || '', business_details: l.business_details || '',
       requirement: l.requirement || '', temperature: l.temperature || 'Warm', source: l.source || '',
       priority: l.priority || 'Medium', value: l.value || '', company_id: l.company_id || '', product_id: l.product_id || '',
+      past_followup_type: 'Call', past_followup_date: '', past_activity: '', past_outcome: '',
+      next_followup_type: 'Call', next_followup_date: '', next_activity: '',
     });
     setDrawer(true);
   };
@@ -114,16 +107,26 @@ export default function LeadsList() {
     if (!form.lead_name.trim()) { toast.error('Client name required', 'Please enter the client name.'); return; }
     const body = { ...form, value: form.value === '' ? null : Number(form.value) };
     try {
-      if (form.id) { await apiFetch(`/crm/leads/${form.id}`, { method: 'PUT', body }); toast.success('Lead updated', form.lead_name); }
-      else { await apiFetch('/crm/leads', { method: 'POST', body }); toast.success('Lead added', form.lead_name); }
-      setDrawer(false); loadLeads();
+      if (form.id) {
+        await crm.updateLead(form.id, body);
+        toast.success('Lead updated', form.lead_name);
+      } else {
+        await crm.addLead(body);
+        toast.success('Lead created', form.lead_name);
+      }
+      setDrawer(false);
     } catch (e) { toast.error('Error', 'Failed to save lead'); }
   };
 
   const doDelete = async () => {
-    try { await apiFetch(`/crm/leads/${confirmDel.id}`, { method: 'DELETE' }); toast.success('Lead deleted', confirmDel.lead_name); loadLeads(); }
-    catch { toast.error('Error', 'Failed to delete lead'); }
-    finally { setConfirmDel(null); }
+    try {
+      await crm.deleteLead(confirmDel.id);
+      toast.success('Deleted', confirmDel.lead_name);
+    } catch {
+      toast.error('Error', 'Failed to delete');
+    } finally {
+      setConfirmDel(null);
+    }
   };
 
   const filtered = useMemo(() => leads.filter((l) =>
@@ -179,7 +182,7 @@ export default function LeadsList() {
       <PageHeader title="Leads" subtitle="Capture, follow up, close and collect feedback" icon="bi-lightning-charge-fill"
         actions={<button className="btn btn-primary" onClick={openNew}><i className="bi bi-plus-lg" /> New Lead</button>} />
 
-      <DateRangeBar onApply={setRange} />
+      <DateRangeBar onApply={setRange} autoApply={false} />
       <DataTable columns={columns} rows={filtered} keyField="id" loading={loading} filters={filters}
         searchPlaceholder="Search client, contact, phone..." searchKeys={['lead_name', 'contact_name', 'phone', 'email', 'requirement']}
         empty={<EmptyState icon="bi-lightning-charge" title="No leads yet" message="Add your first lead to get started." action={<button className="btn btn-primary" onClick={openNew}><i className="bi bi-plus-lg" /> New Lead</button>} />} />
@@ -215,12 +218,23 @@ export default function LeadsList() {
           <Field label="Requirement" col={12}><textarea className="form-control" rows={2} value={form.requirement} onChange={set('requirement')} /></Field>
           <Field label="Source" col={6}><select className="form-select" value={form.source} onChange={set('source')}><option value="">Select</option>{(leadSources || []).map((s) => <option key={s.id || s.name} value={s.name}>{s.name}</option>)}</select></Field>
           <Field label="Est. Value (₹)" col={6}><input type="number" className="form-control" value={form.value} onChange={set('value')} /></Field>
+          
+          <div className="col-12 mt-3 mb-1"><div className="fs-14 fw-7 text-muted-c border-bottom pb-1">Log Past Touch (Optional)</div></div>
+          <Field label="Type" col={6}><select className="form-select" value={form.past_followup_type || 'Call'} onChange={set('past_followup_type')}>{['Call', 'Email', 'Meeting', 'Visit', 'WhatsApp'].map((t) => <option key={t}>{t}</option>)}</select></Field>
+          <Field label="Date/Time" col={6}><DateTimePicker value={form.past_followup_date} onChange={(v) => setForm((f) => ({ ...f, past_followup_date: v }))} /></Field>
+          <Field label="Subject" col={6}><input className="form-control" value={form.past_activity || ''} onChange={set('past_activity')} placeholder="Subject..." /></Field>
+          <Field label="Outcome" col={6}><input className="form-control" value={form.past_outcome || ''} onChange={set('past_outcome')} placeholder="Outcome..." /></Field>
+
+          <div className="col-12 mt-2 mb-1"><div className="fs-14 fw-7 text-muted-c border-bottom pb-1">Schedule Next Follow-up (Optional)</div></div>
+          <Field label="Type" col={6}><select className="form-select" value={form.next_followup_type || 'Call'} onChange={set('next_followup_type')}>{['Call', 'Email', 'Meeting', 'Visit', 'WhatsApp'].map((t) => <option key={t}>{t}</option>)}</select></Field>
+          <Field label="Date/Time" col={6}><DateTimePicker value={form.next_followup_date} onChange={(v) => setForm((f) => ({ ...f, next_followup_date: v }))} /></Field>
+          <Field label="Subject" col={12}><input className="form-control" value={form.next_activity || ''} onChange={set('next_activity')} placeholder="What to follow up about..." /></Field>
         </div>
       </Drawer>
 
       {viewLead && <ViewLeadModal lead={viewLead} onClose={() => setViewLead(null)} />}
-      {followLead && <FollowUpModal lead={followLead} onClose={() => { setFollowLead(null); loadLeads(); }} />}
-      {closeLead && <ClosureModal lead={closeLead} onDone={() => { setCloseLead(null); loadLeads(); }} onClose={() => setCloseLead(null)} />}
+      {followLead && <FollowUpModal lead={followLead} onClose={() => { setFollowLead(null); }} />}
+      {closeLead && <ClosureModal lead={closeLead} onDone={() => { setCloseLead(null); }} onClose={() => setCloseLead(null)} />}
       {feedbackLead && <FeedbackModal lead={feedbackLead} onClose={() => setFeedbackLead(null)} />}
       <ConfirmDialog open={!!confirmDel} onClose={() => setConfirmDel(null)} onConfirm={doDelete} title="Delete lead?" message={`Delete "${confirmDel?.lead_name}"? This cannot be undone.`} confirmLabel="Delete" />
     </div>
@@ -242,6 +256,7 @@ function FollowUpModal({ lead, onClose }) {
     apiFetch(`/crm/leads/${lead.id}/activities`).then((r) => setActivities(r.data || [])).catch(() => {});
   }, [lead.id]);
   useEffect(() => { load(); }, [load]);
+  
   const save = async () => {
     if (!f.followup_date) { toast.error('Date required', 'Pick the date/time of this touch.'); return; }
     try {
@@ -259,7 +274,9 @@ function FollowUpModal({ lead, onClose }) {
         followup_type: f.followup_type, activity: f.activity, status: 'Pending',
       } });
       toast.success('Follow-up scheduled', 'Added to the Follow-ups screen');
-      setF({ ...f, next_followup_date: '' }); load();
+      setF({ ...f, next_followup_date: '' }); 
+      load();
+      onClose();
     } catch { toast.error('Error', 'Failed to schedule follow-up'); }
   };
   // Complete a scheduled follow-up right here — enter the outcome, log it to Activities
@@ -273,15 +290,12 @@ function FollowUpModal({ lead, onClose }) {
   return (
     <Modal open onClose={onClose} title={`Follow-up — ${lead.lead_name}`} icon="bi-clock-history" width={660}>
       <div className="row g-2 mb-3">
-        <div className="col-12 fs-12 text-muted-c mb-1"><b>Save Touch</b> = log this interaction to <b>Activities</b> (and schedule the next follow-up if a next date is set). <b>Schedule Follow-up</b> = just plan a future follow-up (no activity logged).</div>
-        <Field label="Date/Time (this touch)" col={6}><DateTimePicker value={f.followup_date} onChange={(v) => setF({ ...f, followup_date: v })} /></Field>
+        <div className="col-12 fs-14 fw-6 text-muted-c mb-2">Schedule Next Follow-up</div>
         <Field label="Type" col={6}><select className="form-select" value={f.followup_type} onChange={(e) => setF({ ...f, followup_type: e.target.value })}>{['Call', 'Email', 'Meeting', 'Visit', 'WhatsApp'].map((t) => <option key={t}>{t}</option>)}</select></Field>
-        <Field label="Subject" col={12}><input className="form-control" value={f.activity} onChange={(e) => setF({ ...f, activity: e.target.value })} placeholder="Subject — what was done" /></Field>
-        <Field label="Outcome" col={6}><input className="form-control" value={f.outcome} onChange={(e) => setF({ ...f, outcome: e.target.value })} /></Field>
-        <Field label="Next Follow-up Date/Time" col={6} hint="Used by both buttons below"><DateTimePicker value={f.next_followup_date} onChange={(v) => setF({ ...f, next_followup_date: v })} /></Field>
-        <div className="col-12 d-flex justify-content-end gap-2">
-          <button className="btn btn-light btn-sm" onClick={scheduleOnly} title="Create a pending follow-up only (no activity logged)"><i className="bi bi-calendar-plus" /> Schedule Follow-up</button>
-          <button className="btn btn-primary btn-sm" onClick={save} title="Log this touch to Activities (+ next follow-up if a next date is set)"><i className="bi bi-check-lg" /> Save Touch</button>
+        <Field label="Date/Time" col={6}><DateTimePicker value={f.next_followup_date} onChange={(v) => setF({ ...f, next_followup_date: v })} /></Field>
+        <Field label="Subject" col={12}><input className="form-control" value={f.activity} onChange={(e) => setF({ ...f, activity: e.target.value })} placeholder="What to follow up about..." /></Field>
+        <div className="col-12 d-flex justify-content-end mt-2">
+          <button className="btn btn-primary btn-sm" onClick={scheduleOnly}><i className="bi bi-calendar-plus" /> Schedule Follow-up</button>
         </div>
       </div>
 
@@ -320,6 +334,7 @@ function FollowUpModal({ lead, onClose }) {
 // ---------- Closure + registration modal ----------
 function ClosureModal({ lead, onDone, onClose }) {
   const toast = useToast();
+  const crm = useCrm();
   const [choice, setChoice] = useState('Closed');
   const [reg, setReg] = useState({ registration_no: '', registration_date: '', amount: '', payment_status: 'Paid', details: '' });
   const submit = async () => {

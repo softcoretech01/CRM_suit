@@ -158,10 +158,9 @@ export default function Activities() {
       </div>
     ) },
     { key: 'status', label: 'Status', render: (r) => <Badge tone={statusTone(r.status)} dot>{r.status || '—'}</Badge> },
-    { key: 'actions', label: 'Action', width: '150px', render: (r) => (
+    { key: 'actions', label: 'Action', width: '90px', render: (r) => (
       <div className="d-flex align-items-center gap-1" onClick={(e) => e.stopPropagation()}>
         <ActionIconButton type="view" tooltip="View details" onClick={() => setViewAct(r)} />
-        <ActionIconButton type="delete" tooltip="Delete" onClick={() => setConfirmDel(r)} />
       </div>) },
   ];
 
@@ -169,9 +168,6 @@ export default function Activities() {
     <>
       <select className="form-select form-select-sm" style={{ width: 140 }} value={fType} onChange={(e) => setFType(e.target.value)}>
         <option value="">All Types</option>{typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-      </select>
-      <select className="form-select form-select-sm" style={{ width: 140 }} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
-        <option value="">All Status</option>{STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
     </>
   );

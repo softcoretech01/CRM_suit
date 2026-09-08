@@ -11,6 +11,8 @@ import { useCrm } from '../../context/CrmContext';
 import { useToast } from '../../context/ToastContext';
 import { formatINR, statusTone } from '../../utils/format';
 import { salespeople } from '../../data/mockData';
+
+
 import GeographySelect from '../../components/common/GeographySelect';
 
 const STATUS_OPTIONS = ['Active', 'Prospect', 'Inactive', 'Paused'];
@@ -75,14 +77,12 @@ export default function CompaniesList() {
     const formData = new FormData();
     formData.append('file', croppedFile);
     try {
-      const token = sessionStorage.getItem('token');
-      const res = await fetch('/api/masters/companies/upload-logo', {
+
+      const data = await apiFetch('/masters/companies/upload-logo', {
+
         method: 'POST',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,
       });
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
       if (data.logo_url) {
         setForm((f) => ({ ...f, logo_url: data.logo_url }));
         toast.success('Logo uploaded successfully');
@@ -199,7 +199,7 @@ export default function CompaniesList() {
         }
       />
 
-      <DateRangeBar onApply={setRange} />
+      <DateRangeBar onApply={setRange} autoApply={false} />
       <DataTable
         columns={columns}
         rows={rows}

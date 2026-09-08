@@ -284,7 +284,8 @@ const CONFIG = {
     formFields: [
       { key: 'name', label: 'City Name', type: 'text', required: true, col: 6 },
       { key: 'country_id', label: 'Country', type: 'master_select', slug: 'countries', col: 6 },
-      { key: 'state_id', label: 'State', type: 'master_select', slug: 'states', col: 6 },
+      // State list is scoped to the chosen country so a city can't be filed under the wrong state.
+      { key: 'state_id', label: 'State', type: 'master_select', slug: 'states', filterKey: 'country_id', col: 6 },
     ],
     defaults: { state_id: '', country_id: '' },
     seed: [],
@@ -318,21 +319,26 @@ function CompanySelect({ value, onChange }) {
 }
 
 // ---------- Inner: MasterSelect for dynamic dropdowns ----------
-function MasterSelect({ slug, value, onChange }) {
+function MasterSelect({ slug, value, onChange, filterKey, filterValue }) {
   const [options, setOptions] = useState([]);
-  
+
   useEffect(() => {
-    apiFetch(`/masters/${slug}`)
+    // When this select depends on a parent (e.g. states filtered by country),
+    // don't load anything until the parent is chosen.
+    if (filterKey && !filterValue) { setOptions([]); return; }
+    const url = filterKey ? `/masters/${slug}?${filterKey}=${filterValue}` : `/masters/${slug}`;
+    apiFetch(url)
       .then(res => {
         const list = Array.isArray(res) ? res : res.data || [];
         setOptions(list.filter(r => r.is_active !== false && r.status !== 'Inactive' && r.status !== 'INACTIVE'));
       })
       .catch(err => console.error(`Failed to fetch ${slug}:`, err));
-  }, [slug]);
+  }, [slug, filterKey, filterValue]);
 
+  const blocked = filterKey && !filterValue;
   return (
-    <select className="form-select" value={value} onChange={onChange}>
-      <option value="">Select {slug.replace('-', ' ')}...</option>
+    <select className="form-select" value={value} onChange={onChange} disabled={blocked}>
+      <option value="">{blocked ? `Select ${filterKey.replace('_id', '')} first...` : `Select ${slug.replace('-', ' ')}...`}</option>
       {options.map((o) => (
         <option key={o.id || o.code || o.name} value={o.id}>{o.name}</option>
       ))}
@@ -364,14 +370,13 @@ function LogoUploadField({ value, onChange }) {
     const formData = new FormData();
     formData.append('file', croppedFile);
     try {
-      const token = sessionStorage.getItem('token');
-      const res = await fetch('/api/admin/companies/upload-logo', {
+
+
+      const data = await apiFetch('/admin/companies/upload-logo', {
+
         method: 'POST',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData,
       });
-      if (!res.ok) throw new Error('Upload failed');
-      const data = await res.json();
       if (data.logo_url) {
         onChange(data.logo_url);
       }
@@ -412,7 +417,12 @@ function LogoUploadField({ value, onChange }) {
 
 // ---------- Inner: metadata-driven form ----------
 function MasterForm({ fields, sections, values, onChange, statusOptions }) {
-  const set = (k) => (e) => onChange({ ...values, [k]: e.target.value });
+  const set = (k) => (e) => {
+    const next = { ...values, [k]: e.target.value };
+    // Reset any child fields that depend on this one (e.g. changing Country clears State).
+    fields.forEach((f) => { if (f.filterKey === k) next[f.key] = ''; });
+    onChange(next);
+  };
   const toggle = (k) => (e) => onChange({ ...values, [k]: e.target.checked });
 
   const renderField = (f) => {
@@ -437,7 +447,8 @@ function MasterForm({ fields, sections, values, onChange, statusOptions }) {
         ) : f.type === 'company_select' ? (
           <CompanySelect value={values[f.key] ?? ''} onChange={set(f.key)} />
         ) : f.type === 'master_select' ? (
-          <MasterSelect slug={f.slug} value={values[f.key] ?? ''} onChange={set(f.key)} />
+          <MasterSelect slug={f.slug} value={values[f.key] ?? ''} onChange={set(f.key)}
+            filterKey={f.filterKey} filterValue={f.filterKey ? values[f.filterKey] : undefined} />
         ) : f.type === 'logo_upload' ? (
           <LogoUploadField value={values[f.key] ?? ''} onChange={(val) => onChange({ ...values, [f.key]: val })} />
         ) : f.type === 'select' ? (
